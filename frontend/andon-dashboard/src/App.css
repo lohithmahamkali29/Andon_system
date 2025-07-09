@@ -1,0 +1,120 @@
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+
+.dashboard-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.dashboard-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  margin: 20px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+
+.chart-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+
+.connection-status {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.connection-status.connected {
+  background-color: #10B981;
+  color: white;
+}
+
+.connection-status.disconnected {
+  background-color: #EF4444;
+  color: white;
+  animation: pulse 2s infinite;
+}
+
+
+.notification {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 1000;
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  max-width: 300px;
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.notification.success {
+  border-left: 4px solid #10B981;
+}
+
+.notification.error {
+  border-left: 4px solid #EF4444;
+}
+
+.notification.warning {
+  border-left: 4px solid #F59E0B;
+}
+
+
+@media (max-width: 768px) {
+  .dashboard-content {
+    margin: 10px;
+    padding: 15px;
+  }
+  
+  .connection-status {
+    top: 10px;
+    right: 10px;
+    font-size: 10px;
+    padding: 6px 12px;
+  }
+  
+  .notification {
+    top: 60px;
+    right: 10px;
+    max-width: calc(100vw - 20px);
+  }
+}

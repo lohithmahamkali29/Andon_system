@@ -1,0 +1,224 @@
+# ==============================================================================
+# ANDON SYSTEM .gitignore
+# ==============================================================================
+
+# ================================
+# Node.js Dependencies
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ================================
+# Python Dependencies
+# ================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ================================
+# Virtual Environments
+# ================================
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ================================
+# Environment Variables
+# ================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ================================
+# Database Files
+# ================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# PostgreSQL
+*.backup
+*.sql
+
+# ================================
+# Logs
+# ================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ================================
+# Runtime Data
+# ================================
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ================================
+# Coverage Directory
+# ================================
+coverage/
+*.lcov
+.nyc_output/
+
+# ================================
+# IDEs and Editors
+# ================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Atom
+.atom/
+
+# ================================
+# OS Generated Files
+# ================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ================================
+# Hardware/IoT Specific
+# ================================
+# ESP32 build files
+*.bin
+*.elf
+*.map
+build/
+sdkconfig
+sdkconfig.old
+.pio/
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+
+# ================================
+# Certificates and Keys
+# ================================
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# ================================
+# Temporary Files
+# ================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ================================
+# Project Specific
+# ================================
+# Configuration files with sensitive data
+config/production.json
+config/development.json
+secrets.json
+
+# MQTT broker data
+mosquitto/
+mqtt_data/
+
+# Redis data
+redis_data/
+dump.rdb
+
+# Backup files
+*.bak
+*.backup
+
+# Test files
+test_output/
+test_results/
+
+# Documentation build
+docs/_build/
+docs/build/
+
+# Static files cache
+static/cache/
+public/cache/
