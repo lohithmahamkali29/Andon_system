@@ -1,483 +1,1793 @@
-
-
-
-
-// import React, { useState, useEffect, useCallback } from 'react';
-// import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-// import './App.css';
+// // frontend/andon-dashboard/src/Dashboard.js - COMPLETE IMPROVED VERSION
+// import React, { useState, useEffect, useCallback, useRef } from 'react';
 // import io from 'socket.io-client';
-// import DashboardUI from './components/DashboardUI.js';
-
 
 // const Dashboard = () => {
-//   const [stations, setStations] = useState({});
-//   const [dailyRecords, setDailyRecords] = useState({});
-//   const [socket, setSocket] = useState(null);
+//   // State management
+//   const [stations, setStations] = useState([]);
+//   const [currentStationIndex, setCurrentStationIndex] = useState(0);
+//   // eslint-disable-next-line no-unused-vars
+//   const [socket, setSocket] = useState(null); // Socket instance for future use
 //   const [isConnected, setIsConnected] = useState(false);
-//   const [summary, setSummary] = useState({});
+//   const [currentTime, setCurrentTime] = useState(new Date());
+//   const [activeTab, setActiveTab] = useState('');
+//   const [autoSlideActive, setAutoSlideActive] = useState(true);
+//   const [currentShift, setCurrentShift] = useState('A');
+//   const [activeFaults, setActiveFaults] = useState([]);
+//   const [showFaultsSidebar, setShowFaultsSidebar] = useState(false);
+//   const autoSlideRef = useRef(null);
+//   const navRef = useRef(null);
+  
+//   // Modal states
+//   const [showAddStationModal, setShowAddStationModal] = useState(false);
+//   const [showEditStationModal, setShowEditStationModal] = useState(false);
+//   const [showDeleteStationModal, setShowDeleteStationModal] = useState(false);
+//   const [showShiftTimingsModal, setShowShiftTimingsModal] = useState(false);
+//   const [showTableModal, setShowTableModal] = useState(false);
+//   const [showReportsModal, setShowReportsModal] = useState(false);
+  
+//   // Additional states for edit/delete
+//   const [selectedStationForEdit, setSelectedStationForEdit] = useState(null);
+//   const [selectedStationForDelete, setSelectedStationForDelete] = useState(null);
+//   const [editStationData, setEditStationData] = useState({
+//     stationName: '',
+//     plannedCount1: '',
+//     plannedCount2: '',
+//     plannedCount3: '',
+//     ipAddress: '',
+//     topic: ''
+//   });
+  
+//   // Form states
+//   const [newStationData, setNewStationData] = useState({
+//     stationName: '',
+//     plannedCount1: '',
+//     plannedCount2: '',
+//     plannedCount3: '',
+//     ipAddress: '',
+//     topic: ''
+//   });
+  
+//   const [shiftTimings, setShiftTimings] = useState({
+//     shift1_start: '05:30',
+//     shift1_end: '14:20',
+//     shift2_start: '14:20',
+//     shift2_end: '00:10',
+//     shift3_start: '00:10',
+//     shift3_end: '05:30'
+//   });
+  
+//   const [tableData, setTableData] = useState([]);
+//   const [tableColumns, setTableColumns] = useState([]);
+//   const [selectedTable, setSelectedTable] = useState('');
 
 //   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 //   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
 
-//   // Initialize station data
-//   const initializeStations = useCallback(() => {
-//     const initialStations = {};
-//     for (let i = 1; i <= 18; i++) {
-//       const stationName = `Station${i}`;
-//       initialStations[stationName] = {
-//         id: i,
-//         name: stationName,
-//         production: { state: 1, faultTime: null, resolvedTime: null },
-//         maintenance: { state: 1, faultTime: null, resolvedTime: null },
-//         quality: { state: 1, faultTime: null, resolvedTime: null },
-//         store: { state: 1, faultTime: null, resolvedTime: null },
-//         actualCount: 0,
-//         totalDowntime: 0,
-//         currentDowntime: 0,
-//         activeFaults: new Set(),
-//         efficiency: 0,
-//         isActive: true,
-//         isAlive: true
-//       };
+//   // Auto-slide functionality (matching Python behavior)
+//   const startAutoSlide = useCallback(() => {
+//     if (stations.length > 1 && autoSlideActive) {
+//       autoSlideRef.current = setInterval(() => {
+//         setCurrentStationIndex(prev => (prev + 1) % stations.length);
+//       }, 3000); // 3 seconds for better viewing
 //     }
-//     setStations(initialStations);
-//   }, []);
+//   }, [stations.length, autoSlideActive]);
 
-//   // Fetch initial data from Express API
-//   const fetchInitialData = useCallback(async () => {
-//     try {
-//       // Fetch daily records for today's downtime
-//       const dailyResponse = await fetch(`${API_BASE_URL}/api/data/dailyrecord`);
-//       const dailyData = await dailyResponse.json();
-      
-//       const dailyByStation = {};
-//       const today = new Date().toISOString().split('T')[0];
-      
-//       dailyData.forEach(record => {
-//         if (record.todayDate === today) {
-//           dailyByStation[record.stationName] = record;
-//         }
-//       });
-      
-//       setDailyRecords(dailyByStation);
-
-//       // Fetch bay details for station information
-//       const bayResponse = await fetch(`${API_BASE_URL}/api/data/baydetail`);
-//       const bayData = await bayResponse.json();
-      
-//       setStations(prev => {
-//         const updated = { ...prev };
-//         bayData.forEach(bay => {
-//           if (updated[bay.stationName]) {
-//             updated[bay.stationName].actualCount = bay.actualCount;
-//             updated[bay.stationName].efficiency = bay.efficiency;
-//             updated[bay.stationName].isActive = bay.isActive;
-//             updated[bay.stationName].isAlive = bay.isAlive;
-//             updated[bay.stationName].totalDowntime = dailyByStation[bay.stationName]?.totalDowntime || 0;
-//           }
-//         });
-//         return updated;
-//       });
-
-//       // Fetch current unresolved faults
-//       const sectionResponse = await fetch(`${API_BASE_URL}/api/data/sectiondata?date=${today}`);
-//       const sectionData = await sectionResponse.json();
-      
-//       setStations(prev => {
-//         const updated = { ...prev };
-//         sectionData.forEach(section => {
-//           if (!section.resolvedTime && updated[section.stationName]) {
-//             const callType = section.callType.toLowerCase();
-//             updated[section.stationName][callType].state = 0;
-//             updated[section.stationName][callType].faultTime = new Date(section.faultTime);
-//             updated[section.stationName].activeFaults.add(callType);
-//           }
-//         });
-//         return updated;
-//       });
-
-//       // Fetch dashboard summary
-//       const summaryResponse = await fetch(`${API_BASE_URL}/api/dashboard/summary`);
-//       const summaryData = await summaryResponse.json();
-//       setSummary(summaryData);
-
-//     } catch (error) {
-//       console.error('Error fetching initial data:', error);
+//   const stopAutoSlide = () => {
+//     if (autoSlideRef.current) {
+//       clearInterval(autoSlideRef.current);
+//       autoSlideRef.current = null;
 //     }
-//   }, [API_BASE_URL]);
+//   };
+
+//   // Navigation functions
+//   const nextSlide = () => {
+//     stopAutoSlide();
+//     setCurrentStationIndex(prev => (prev + 1) % stations.length);
+//     setAutoSlideActive(true);
+//   };
+
+//   const prevSlide = () => {
+//     stopAutoSlide();
+//     setCurrentStationIndex(prev => (prev - 1 + stations.length) % stations.length);
+//     setAutoSlideActive(true);
+//   };
 
 //   // Socket.IO connection
 //   useEffect(() => {
-//     const connectSocket = () => {
-//       const newSocket = io(SOCKET_URL, {
-//         transports: ['websocket'],
-//         cors: {
-//           origin: "http://localhost:3000",
-//           methods: ["GET", "POST"]
-//         }
-//       });
-      
-//       newSocket.on('connect', () => {
-//         console.log('✅ Socket.IO connected');
-//         setIsConnected(true);
-//       });
-      
-//       newSocket.on('disconnect', () => {
-//         console.log('❌ Socket.IO disconnected');
-//         setIsConnected(false);
-//       });
+//     const newSocket = io(SOCKET_URL, {
+//       transports: ['websocket'],
+//       cors: {
+//         origin: "http://localhost:3000",
+//         methods: ["GET", "POST"]
+//       }
+//     });
 
-//       newSocket.on('connection_status', (data) => {
-//         console.log('Connection status:', data);
-//       });
-      
-//       newSocket.on('station_update', (data) => {
-//         handleSocketMessage(data);
-//       });
-      
-//       newSocket.on('error', (error) => {
-//         console.error('Socket.IO error:', error);
-//       });
-      
-//       setSocket(newSocket);
-//     };
+//     newSocket.on('connect', () => {
+//       console.log('✅ Socket.IO connected');
+//       setIsConnected(true);
+//     });
 
-//     connectSocket();
+//     newSocket.on('disconnect', () => {
+//       console.log('❌ Socket.IO disconnected');
+//       setIsConnected(false);
+//     });
+
+//     newSocket.on('stationUpdate', (data) => {
+//       console.log('Station update received:', data);
+//       setStations(prevStations => {
+//         return prevStations.map(station => {
+//           if (station.stationName === data.stationName) {
+//             return { 
+//               ...station, 
+//               ...data,
+//               // Preserve existing structure while updating with new data
+//               actualCount: data.actualCount || station.actualCount,
+//               totalDowntime: data.totalDowntime || station.totalDowntime,
+//               faultStatus: data.faultStatus || station.faultStatus,
+//               faultTime: data.faultTime || station.faultTime,
+//               resolvedTime: data.resolvedTime || station.resolvedTime
+//             };
+//           }
+//           return station;
+//         });
+//       });
+//     });
+
+//     newSocket.on('connection_status', (data) => {
+//       console.log('Connection status:', data);
+//     });
+
+//     setSocket(newSocket);
 
 //     return () => {
-//       if (socket) {
-//         socket.disconnect();
-//       }
+//       newSocket.disconnect();
 //     };
 //   }, [SOCKET_URL]);
 
-//   // Handle Socket.IO messages
-//   const handleSocketMessage = useCallback((message) => {
-//     console.log('Received socket message:', message);
-    
-//     if (message.type === 'station_updates') {
-//       setStations(prev => {
-//         const updated = { ...prev };
-        
-//         message.changes.forEach(change => {
-//           const station = updated[change.station];
-//           if (!station) return;
-          
-//           const callType = change.callType.toLowerCase();
-//           const now = new Date();
-          
-//           if (change.type === 'fault') {
-//             // Fault occurred
-//             station[callType].state = 0;
-//             station[callType].faultTime = new Date(change.time);
-//             station[callType].resolvedTime = null;
-//             station.activeFaults.add(callType);
-            
-//             console.log(`🚨 Fault detected: ${change.station} - ${change.callType}`);
-//           } else if (change.type === 'resolved') {
-//             // Fault resolved
-//             station[callType].state = 1;
-//             station[callType].resolvedTime = new Date(change.time);
-//             station.activeFaults.delete(callType);
-            
-//             // Calculate and add downtime
-//             if (station[callType].faultTime) {
-//               const downtime = (station[callType].resolvedTime - station[callType].faultTime) / (1000 * 60); // minutes
-//               station.totalDowntime += downtime;
-//             }
-            
-//             console.log(`✅ Fault resolved: ${change.station} - ${change.callType}`);
-//           }
-//         });
-        
-//         // Update actual count if provided
-//         if (message.stationData && message.stationData.actualCount !== undefined) {
-//           const station = updated[message.stationData.station];
-//           if (station) {
-//             station.actualCount = message.stationData.actualCount;
-//           }
-//         }
-        
-//         return updated;
-//       });
-//     }
+//   // Update time every second (matching Python)
+//   useEffect(() => {
+//     const timer = setInterval(() => {
+//       setCurrentTime(new Date());
+//     }, 1000);
+//     return () => clearInterval(timer);
 //   }, []);
 
-//   // Send station update via Socket.IO
-//   const sendStationUpdate = useCallback((data) => {
-//     if (socket && socket.connected) {
-//       socket.emit('station_update', data);
-//     }
-//   }, [socket]);
+//   // Auto-slide effect
+//   useEffect(() => {
+//     startAutoSlide();
+//     return () => stopAutoSlide();
+//   }, [startAutoSlide]);
 
-//   // Calculate current downtime for active faults
-//   const getCurrentDowntime = useCallback((station) => {
-//     let currentDowntime = 0;
-//     const now = new Date();
-    
-//     station.activeFaults.forEach(callType => {
-//       if (station[callType].faultTime) {
-//         currentDowntime += (now - station[callType].faultTime) / (1000 * 60); // minutes
+//   // Click outside handler for navigation
+//   useEffect(() => {
+//     const handleClickOutside = (event) => {
+//       if (navRef.current && !navRef.current.contains(event.target)) {
+//         setActiveTab('');
 //       }
-//     });
-    
-//     return currentDowntime;
+//     };
+
+//     document.addEventListener('mousedown', handleClickOutside);
+//     return () => {
+//       document.removeEventListener('mousedown', handleClickOutside);
+//     };
 //   }, []);
 
-//   // Get station background color based on active faults
-//   const getStationColor = useCallback((station) => {
-//     if (station.activeFaults.size > 0) {
-//       return 'bg-red-500';
-//     }
-//     if (!station.isActive) {
-//       return 'bg-gray-500';
-//     }
-//     if (!station.isAlive) {
-//       return 'bg-yellow-500';
-//     }
-//     return 'bg-green-500';
-//   }, []);
-
-//   // Format time display
-//   const formatTime = (date) => {
-//     if (!date) return '--:--';
-//     return date.toLocaleTimeString('en-US', { 
-//       hour12: false, 
-//       hour: '2-digit', 
-//       minute: '2-digit' 
-//     });
-//   };
-
-//   // Format duration in minutes to readable format
-//   const formatDuration = (minutes) => {
-//     if (minutes < 60) {
-//       return `${Math.round(minutes)}m`;
-//     } else {
-//       const hours = Math.floor(minutes / 60);
-//       const mins = Math.round(minutes % 60);
-//       return `${hours}h ${mins}m`;
-//     }
-//   };
-
-//   // Manual fault testing functions
-//   const createTestFault = async (stationName, callType) => {
+//   // Fetch initial station data
+//   const fetchStations = useCallback(async () => {
 //     try {
-//       const response = await fetch(`${API_BASE_URL}/api/sectiondata`, {
+//       const response = await fetch(`${API_BASE_URL}/api/stations`);
+//       const data = await response.json();
+      
+//       if (data.success) {
+//         setStations(data.stations || []);
+//         console.log(`📋 Loaded ${data.stations?.length || 0} stations`);
+//       }
+//     } catch (error) {
+//       console.error('Error fetching stations:', error);
+//     }
+//   }, [API_BASE_URL]);
+
+//   // Fetch shift timings
+//   const fetchShiftTimings = useCallback(async () => {
+//     try {
+//       const response = await fetch(`${API_BASE_URL}/api/shift-config`);
+//       const data = await response.json();
+      
+//       if (data.success && data.config) {
+//         setShiftTimings(data.config);
+//       }
+//     } catch (error) {
+//       console.error('Error fetching shift timings:', error);
+//     }
+//   }, [API_BASE_URL]);
+
+//   useEffect(() => {
+//     fetchStations();
+//     fetchShiftTimings();
+//   }, [fetchStations, fetchShiftTimings]);
+
+//   // Add station
+//   const handleAddStation = async () => {
+//     try {
+//       const response = await fetch(`${API_BASE_URL}/api/stations`, {
 //         method: 'POST',
 //         headers: {
 //           'Content-Type': 'application/json',
 //         },
-//         body: JSON.stringify({
-//           stationName,
-//           callType,
-//           faultTime: new Date().toISOString()
-//         })
+//         body: JSON.stringify(newStationData),
 //       });
-      
-//       if (response.ok) {
-//         console.log(`Test fault created: ${stationName} - ${callType}`);
+
+//       const result = await response.json();
+
+//       if (result.success) {
+//         setShowAddStationModal(false);
+//         setNewStationData({
+//           stationName: '',
+//           plannedCount1: '',
+//           plannedCount2: '',
+//           plannedCount3: '',
+//           ipAddress: '',
+//           topic: ''
+//         });
+//         fetchStations(); // Reload stations
+//         alert('Station added successfully!');
+//       } else {
+//         alert(`Error: ${result.error}`);
 //       }
 //     } catch (error) {
-//       console.error('Error creating test fault:', error);
+//       console.error('Error adding station:', error);
+//       alert('Error adding station');
 //     }
 //   };
 
-//   // Prepare chart data
-//   const chartData = Object.values(stations).map(station => ({
-//     name: station.name.replace('Station', 'S'),
-//     actualCount: station.actualCount,
-//     efficiency: station.efficiency
-//   }));
+//   // Edit station functions
+//   const openEditStationModal = () => {
+//     if (stations.length === 0) {
+//       alert('No stations available to edit');
+//       return;
+//     }
+//     setSelectedStationForEdit(stations[0]);
+//     setEditStationData({
+//       stationName: stations[0].stationName,
+//       plannedCount1: stations[0].plannedCount1 || '',
+//       plannedCount2: stations[0].plannedCount2 || '',
+//       plannedCount3: stations[0].plannedCount3 || '',
+//       ipAddress: stations[0].ipAddress || '',
+//       topic: stations[0].topic || ''
+//     });
+//     setShowEditStationModal(true);
+//     setActiveTab('');
+//   };
 
-//   // Initialize on mount
-//   useEffect(() => {
-//     initializeStations();
-//     fetchInitialData();
-//   }, [initializeStations, fetchInitialData]);
+//   const handleEditStation = async () => {
+//     if (!selectedStationForEdit) return;
 
-//   // Update current downtime every second for active faults
-//   useEffect(() => {
-//     const interval = setInterval(() => {
-//       setStations(prev => {
-//         const updated = { ...prev };
-//         Object.keys(updated).forEach(stationName => {
-//           if (updated[stationName].activeFaults.size > 0) {
-//             updated[stationName].currentDowntime = getCurrentDowntime(updated[stationName]);
-//           } else {
-//             updated[stationName].currentDowntime = 0;
-//           }
-//         });
-//         return updated;
+//     try {
+//       const response = await fetch(`${API_BASE_URL}/api/stations/${selectedStationForEdit.stationName}`, {
+//         method: 'PUT',
+//         headers: {
+//           'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify(editStationData),
 //       });
-//     }, 1000);
 
-//     return () => clearInterval(interval);
-//   }, [getCurrentDowntime]);
+//       const result = await response.json();
+
+//       if (result.success) {
+//         setShowEditStationModal(false);
+//         setSelectedStationForEdit(null);
+//         fetchStations(); // Reload stations
+//         alert('Station updated successfully!');
+//       } else {
+//         alert(`Error: ${result.error}`);
+//       }
+//     } catch (error) {
+//       console.error('Error updating station:', error);
+//       alert('Error updating station');
+//     }
+//   };
+
+//   // Delete station functions
+//   const openDeleteStationModal = () => {
+//     if (stations.length === 0) {
+//       alert('No stations available to delete');
+//       return;
+//     }
+//     setSelectedStationForDelete(stations[0]);
+//     setShowDeleteStationModal(true);
+//     setActiveTab('');
+//   };
+
+//   const handleDeleteStation = async () => {
+//     if (!selectedStationForDelete) return;
+
+//     if (!window.confirm(`Are you sure you want to delete "${selectedStationForDelete.stationName}"? This action cannot be undone.`)) {
+//       return;
+//     }
+
+//     try {
+//       const response = await fetch(`${API_BASE_URL}/api/stations/${selectedStationForDelete.stationName}`, {
+//         method: 'DELETE',
+//       });
+
+//       const result = await response.json();
+
+//       if (result.success) {
+//         setShowDeleteStationModal(false);
+//         setSelectedStationForDelete(null);
+//         fetchStations(); // Reload stations
+//         alert('Station deleted successfully!');
+//       } else {
+//         alert(`Error: ${result.error}`);
+//       }
+//     } catch (error) {
+//       console.error('Error deleting station:', error);
+//       alert('Error deleting station');
+//     }
+//   };
+
+//   // Update shift timings
+//   const handleUpdateShiftTimings = async () => {
+//     try {
+//       const response = await fetch(`${API_BASE_URL}/api/shift-config`, {
+//         method: 'PUT',
+//         headers: {
+//           'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify(shiftTimings),
+//       });
+
+//       const result = await response.json();
+
+//       if (result.success) {
+//         setShowShiftTimingsModal(false);
+//         alert('Shift timings updated successfully!');
+//       } else {
+//         alert(`Error: ${result.error}`);
+//       }
+//     } catch (error) {
+//       console.error('Error updating shift timings:', error);
+//       alert('Error updating shift timings');
+//     }
+//   };
+
+//   // View table data
+//   const handleViewTable = async (tableName) => {
+//     try {
+//       const response = await fetch(`${API_BASE_URL}/api/tables/${tableName}`);
+//       const data = await response.json();
+      
+//       if (data.success) {
+//         setTableData(data.rows || []);
+//         setTableColumns(data.columns || []);
+//         setSelectedTable(tableName);
+//         setShowTableModal(true);
+//         setActiveTab(''); // Close dropdown
+//       }
+//     } catch (error) {
+//       console.error('Error fetching table data:', error);
+//     }
+//   };
+
+//   // Get current station
+//   const currentStation = stations[currentStationIndex];
+
+//   // Format time (matching Python format)
+//   const formatTime = (date) => {
+//     return date.toLocaleTimeString('en-GB', { 
+//       hour12: false, 
+//       hour: '2-digit', 
+//       minute: '2-digit',
+//       second: '2-digit'
+//     });
+//   };
+
+//   const formatDate = (date) => {
+//     return date.toLocaleDateString('en-GB');
+//   };
+
+//   // Get station color based on fault status (matching Python logic)
+//   const getStationBgColor = (station) => {
+//     if (!station) return '#f0f8ff';
+    
+//     const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
+//     return hasActiveFault ? '#ffe6e6' : '#f0f8ff';
+//   };
+
+//   const getStatusColor = (station) => {
+//     if (!station) return '#27ae60';
+    
+//     const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
+//     return hasActiveFault ? '#e74c3c' : '#27ae60';
+//   };
+
+//   const getStatusText = (station) => {
+//     if (!station) return '✅ OK Status';
+    
+//     const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
+    
+//     if (hasActiveFault) {
+//       const activeFaults = Object.entries(station.faultStatus || {})
+//         .filter(([_, status]) => status === true)
+//         .map(([calltype]) => calltype);
+//       return `⚠️ FAULT: ${activeFaults.join(', ')}`;
+//     }
+    
+//     return '✅ OK Status';
+//   };
+
+//   // Toggle menu function
+//   const toggleMenu = (menuName) => {
+//     if (activeTab === menuName) {
+//       setActiveTab('');
+//     } else {
+//       setActiveTab(menuName);
+//     }
+//   };
 
 //   return (
-//     <DashboardUI
-//       stations={stations}
-//       isConnected={isConnected}
-//       summary={summary}
-//       getStationColor={getStationColor}
-//       createTestFault={createTestFault}
-//       formatTime={formatTime}
-//       formatDuration={formatDuration}
-//       chartData={chartData}
-//       API_BASE_URL={API_BASE_URL}
-//       SOCKET_URL={SOCKET_URL}
-//     />
-  
+//     <div style={{ 
+//       minHeight: '100vh', 
+//       backgroundColor: '#ecf0f1', 
+//       padding: '0.5rem',
+//       fontFamily: 'Arial, sans-serif'
+//     }}>
+//       {/* Header - matching Python layout exactly */}
+//       <div style={{
+//         backgroundColor: 'white',
+//         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+//         padding: '0.75rem 1rem',
+//         marginBottom: '0.5rem',
+//         display: 'flex',
+//         justifyContent: 'space-between',
+//         alignItems: 'center',
+//         flexWrap: 'wrap',
+//         gap: '1rem'
+//       }}>
+//         {/* Left logos - JBM and Ogihara */}
+//         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+//           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+//             <div style={{
+//               width: '3rem', height: '3rem', borderRadius: '50%',
+//               backgroundColor: '#2563eb', display: 'flex', alignItems: 'center',
+//               justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '1.5rem'
+//             }}>J</div>
+//             <span style={{ fontWeight: 'bold', fontSize: '1.5rem' }}>JBM</span>
+//             <span style={{ fontSize: '1rem', color: '#6b7280' }}>Group</span>
+//           </div>
+//           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+//             <div style={{
+//               width: '3rem', height: '3rem', borderRadius: '50%',
+//               backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center',
+//               justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '1.5rem'
+//             }}>O</div>
+//             <span style={{ fontWeight: 'bold', fontSize: '1.5rem', color: '#2563eb' }}>Ogihara</span>
+//           </div>
+//         </div>
+        
+//         {/* Center title - matching Python styling */}
+//         <div style={{ textAlign: 'center', flex: 1 }}>
+//           <h1 style={{
+//             fontSize: '2.5rem',
+//             fontWeight: 'bold',
+//             color: '#1d4ed8',
+//             fontStyle: 'italic',
+//             margin: 0,
+//             fontFamily: 'Times New Roman'
+//           }}>Andon Dashboard</h1>
+//         </div>
+        
+//         {/* Right date/time - matching Python format */}
+//         <div style={{ textAlign: 'right' }}>
+//           <div style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+//             {formatDate(currentTime)}
+//           </div>
+//           <div style={{
+//             fontFamily: 'monospace', fontSize: '1.25rem', fontWeight: 'bold',
+//             backgroundColor: '#1f2937', color: '#00ff00', padding: '0.75rem',
+//             borderRadius: '0.25rem', border: '2px solid #374151', letterSpacing: '1px'
+//           }}>
+//             {formatTime(currentTime)}
+//           </div>
+//           <div style={{
+//             fontSize: '0.875rem',
+//             color: isConnected ? '#10b981' : '#ef4444',
+//             marginTop: '0.5rem'
+//           }}>
+//             {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* Navigation Bar - IMPROVED with centered layout */}
+//       <nav ref={navRef} style={{
+//         backgroundColor: '#1e40af',
+//         color: 'white',
+//         padding: '0.75rem',
+//         marginBottom: '1rem',
+//         borderRadius: '0.25rem',
+//         position: 'relative',
+//         zIndex: 1000
+//       }}>
+//         <ul style={{
+//           display: 'flex',
+//           listStyle: 'none',
+//           margin: 0,
+//           padding: 0,
+//           justifyContent: 'space-around', // Centers and spaces the 3 main options
+//           alignItems: 'center'
+//         }}>
+//           {/* Stations Dropdown */}
+//           <li style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center' }}>
+//             <button 
+//               onClick={() => toggleMenu('stations')}
+//               style={{
+//                 backgroundColor: activeTab === 'stations' ? '#3b82f6' : 'transparent',
+//                 color: 'white',
+//                 border: 'none',
+//                 padding: '0.75rem 1.5rem',
+//                 borderRadius: '0.25rem',
+//                 cursor: 'pointer',
+//                 fontWeight: 'bold',
+//                 fontSize: '1.1rem'
+//               }}
+//             >
+//               Stations
+//             </button>
+//             {activeTab === 'stations' && (
+//               <div style={{
+//                 position: 'absolute',
+//                 top: '100%',
+//                 left: '50%',
+//                 transform: 'translateX(-50%)',
+//                 backgroundColor: 'white',
+//                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+//                 borderRadius: '0.25rem',
+//                 zIndex: 10,
+//                 minWidth: '250px',
+//                 color: '#374151'
+//               }}>
+//                 <button onClick={() => { setShowAddStationModal(true); setActiveTab(''); }}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   Add Station
+//                 </button>
+//                 <button onClick={openEditStationModal}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   Edit Station
+//                 </button>
+//                 <button onClick={openDeleteStationModal}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   Delete Station
+//                 </button>
+//                 <button onClick={() => { setShowShiftTimingsModal(true); setActiveTab(''); }}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   Edit Shift Timings
+//                 </button>
+//                 <div style={{ padding: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+//                   <h4 style={{ margin: '0 0 0.5rem 0', color: '#374151', fontSize: '0.875rem' }}>Current Stations ({stations.length})</h4>
+//                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.25rem' }}>
+//                     {stations.map(station => (
+//                       <div key={station.stationName} style={{
+//                         backgroundColor: '#e5e7eb',
+//                         padding: '0.25rem',
+//                         borderRadius: '0.25rem',
+//                         fontSize: '0.75rem',
+//                         textAlign: 'center'
+//                       }}>
+//                         {station.stationName}
+//                       </div>
+//                     ))}
+//                   </div>
+//                 </div>
+//               </div>
+//             )}
+//           </li>
+
+//           {/* Data Views Dropdown */}
+//           <li style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center' }}>
+//             <button 
+//               onClick={() => toggleMenu('data')}
+//               style={{
+//                 backgroundColor: activeTab === 'data' ? '#3b82f6' : 'transparent',
+//                 color: 'white',
+//                 border: 'none',
+//                 padding: '0.75rem 1.5rem',
+//                 borderRadius: '0.25rem',
+//                 cursor: 'pointer',
+//                 fontWeight: 'bold',
+//                 fontSize: '1.1rem'
+//               }}
+//             >
+//               Data Views
+//             </button>
+//             {activeTab === 'data' && (
+//               <div style={{
+//                 position: 'absolute',
+//                 top: '100%',
+//                 left: '50%',
+//                 transform: 'translateX(-50%)',
+//                 backgroundColor: 'white',
+//                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+//                 borderRadius: '0.25rem',
+//                 zIndex: 10,
+//                 minWidth: '200px',
+//                 color: '#374151'
+//               }}>
+//                 <button onClick={() => handleViewTable('baydetails')}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   View BayDetails
+//                 </button>
+//                 <button onClick={() => handleViewTable('SectionData')}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   View SectionData
+//                 </button>
+//                 <button onClick={() => handleViewTable('DailyRecord')}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   View DailyRecord
+//                 </button>
+//                 <button onClick={() => handleViewTable('ShiftData')}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   Shift Data
+//                 </button>
+//                 <button onClick={() => handleViewTable('ShiftBaselines')}
+//                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+//                   Shift Baselines
+//                 </button>
+//               </div>
+//             )}
+//           </li>
+
+//           {/* Reports */}
+//           <li style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+//             <button 
+//               onClick={() => { setShowReportsModal(true); setActiveTab(''); }}
+//               style={{
+//                 backgroundColor: 'transparent',
+//                 color: 'white',
+//                 border: 'none',
+//                 padding: '0.75rem 1.5rem',
+//                 borderRadius: '0.25rem',
+//                 cursor: 'pointer',
+//                 fontWeight: 'bold',
+//                 fontSize: '1.1rem'
+//               }}
+//             >
+//               Reports
+//             </button>
+//           </li>
+
+//           {/* Active Faults Button - NEW */}
+//           <li style={{ position: 'absolute', right: '1rem' }}>
+//             <button 
+//               onClick={() => setShowFaultsSidebar(!showFaultsSidebar)}
+//               style={{
+//                 backgroundColor: activeFaults.length > 0 ? '#ef4444' : '#6b7280',
+//                 color: 'white',
+//                 border: 'none',
+//                 padding: '0.5rem 1rem',
+//                 borderRadius: '0.25rem',
+//                 cursor: 'pointer',
+//                 fontWeight: 'bold',
+//                 fontSize: '0.9rem',
+//                 display: 'flex',
+//                 alignItems: 'center',
+//                 gap: '0.5rem'
+//               }}
+//             >
+//               🚨 Faults ({activeFaults.length})
+//             </button>
+//           </li>
+//         </ul>
+//       </nav>
+
+//       {/* Station Header with Navigation - matching Python layout */}
+//       <div style={{
+//         backgroundColor: '#374151',
+//         color: 'white',
+//         textAlign: 'center',
+//         padding: '1.5rem 1rem',
+//         marginBottom: '1rem',
+//         display: 'flex',
+//         justifyContent: 'space-between',
+//         alignItems: 'center',
+//         borderRadius: '0.5rem'
+//       }}>
+//         <button 
+//           onClick={prevSlide}
+//           disabled={stations.length <= 1}
+//           style={{
+//             backgroundColor: '#3b82f6', 
+//             color: 'white', 
+//             padding: '0.75rem 1.25rem',
+//             border: 'none', 
+//             borderRadius: '0.25rem', 
+//             cursor: stations.length > 1 ? 'pointer' : 'not-allowed',
+//             fontSize: '1rem',
+//             fontWeight: 'bold',
+//             opacity: stations.length > 1 ? 1 : 0.5
+//           }}
+//         >
+//           ◀ Previous
+//         </button>
+        
+//         <h2 style={{
+//           fontSize: '3rem',
+//           fontWeight: 'bold',
+//           margin: 0,
+//           flex: 1
+//         }}>
+//           Production Line
+//         </h2>
+        
+//         <button 
+//           onClick={nextSlide}
+//           disabled={stations.length <= 1}
+//           style={{
+//             backgroundColor: '#3b82f6', 
+//             color: 'white', 
+//             padding: '0.75rem 1.25rem',
+//             border: 'none', 
+//             borderRadius: '0.25rem', 
+//             cursor: stations.length > 1 ? 'pointer' : 'not-allowed',
+//             fontSize: '1rem',
+//             fontWeight: 'bold',
+//             opacity: stations.length > 1 ? 1 : 0.5
+//           }}
+//         >
+//           Next ▶
+//         </button>
+//       </div>
+
+//       {/* Main Station Display - exact layout match with Python */}
+//       {currentStation ? (
+//         <div style={{
+//           backgroundColor: getStationBgColor(currentStation),
+//           padding: '2rem',
+//           borderRadius: '0.5rem',
+//           boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+//           marginBottom: '1rem'
+//         }}>
+//           {/* Station Name Header - matching Python styling */}
+//           <div style={{
+//             backgroundColor: '#2c3e50',
+//             color: 'white',
+//             textAlign: 'center',
+//             padding: '1.5rem',
+//             marginBottom: '2rem',
+//             borderRadius: '0.5rem',
+//             border: '3px solid #34495e'
+//           }}>
+//             <h1 style={{
+//               fontSize: '4rem',
+//               fontWeight: 'bold',
+//               margin: 0
+//             }}>
+//               {currentStation.stationName}
+//             </h1>
+//           </div>
+
+//           {/* Metrics Cards Row - matching Python card colors and layout */}
+//           <div style={{
+//             display: 'grid',
+//             gridTemplateColumns: 'repeat(3, 1fr)',
+//             gap: '1.5rem',
+//             marginBottom: '2rem'
+//           }}>
+//             {/* Plan Count Card - Blue */}
+//             <div style={{
+//               backgroundColor: '#3498db',
+//               color: 'white',
+//               padding: '2rem',
+//               borderRadius: '0.5rem',
+//               textAlign: 'center',
+//               border: '3px solid #2980b9',
+//               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//             }}>
+//               <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+//                 Plan Count
+//               </h3>
+//               <p style={{ fontSize: '3rem', fontWeight: 'bold', margin: 0 }}>
+//                 {currentStation.planCount || 0}
+//               </p>
+//             </div>
+
+//             {/* Actual Count Card - Green */}
+//             <div style={{
+//               backgroundColor: '#478778',
+//               color: 'white',
+//               padding: '2rem',
+//               borderRadius: '0.5rem',
+//               textAlign: 'center',
+//               border: '3px solid #27ae60',
+//               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//             }}>
+//               <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+//                 Actual Count
+//               </h3>
+//               <p style={{ fontSize: '3rem', fontWeight: 'bold', margin: 0 }}>
+//                 {currentStation.actualCount || 0}
+//               </p>
+//             </div>
+
+//             {/* Total Downtime Card - Orange */}
+//             <div style={{
+//               backgroundColor: '#f39c12',
+//               color: 'white',
+//               padding: '2rem',
+//               borderRadius: '0.5rem',
+//               textAlign: 'center',
+//               border: '3px solid #e67e22',
+//               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//             }}>
+//               <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+//                 Total Downtime
+//               </h3>
+//               <p style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0 }}>
+//                 {currentStation.totalDowntime ? `${currentStation.totalDowntime.toFixed(1)} mins` : '0.0 mins'}
+//               </p>
+//             </div>
+//           </div>
+
+//           {/* Time Information Row - matching Python layout */}
+//           <div style={{
+//             display: 'grid',
+//             gridTemplateColumns: 'repeat(2, 1fr)',
+//             gap: '1.5rem',
+//             marginBottom: '2rem'
+//           }}>
+//             {/* Fault Time Card - Purple */}
+//             <div style={{
+//               backgroundColor: '#9b59b6',
+//               color: 'white',
+//               padding: '2rem',
+//               borderRadius: '0.5rem',
+//               textAlign: 'center',
+//               border: '3px solid #8e44ad',
+//               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//             }}>
+//               <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+//                 Fault Time
+//               </h3>
+//               <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+//                 {currentStation.faultTime || '--:--:--'}
+//               </p>
+//             </div>
+
+//             {/* Resolved Time Card - Teal */}
+//             <div style={{
+//               backgroundColor: '#1abc9c',
+//               color: 'white',
+//               padding: '2rem',
+//               borderRadius: '0.5rem',
+//               textAlign: 'center',
+//               border: '3px solid #16a085',
+//               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//             }}>
+//               <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+//                 Resolved Time
+//               </h3>
+//               <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+//                 {currentStation.resolvedTime || '--:--:--'}
+//               </p>
+//             </div>
+//           </div>
+
+//           {/* Status Bar - matching Python fault/ok status */}
+//           <div style={{
+//             backgroundColor: getStatusColor(currentStation),
+//             color: 'white',
+//             padding: '2rem',
+//             borderRadius: '0.5rem',
+//             textAlign: 'center',
+//             border: '3px solid rgba(0,0,0,0.1)',
+//             boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//           }}>
+//             <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+//               {getStatusText(currentStation)}
+//             </p>
+//           </div>
+//         </div>
+//       ) : (
+//         <div style={{
+//           backgroundColor: 'white',
+//           padding: '4rem 2rem',
+//           borderRadius: '0.5rem',
+//           textAlign: 'center',
+//           boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+//         }}>
+//           <h2 style={{ color: '#6b7280', margin: 0, fontSize: '2rem' }}>
+//             No stations available to display
+//           </h2>
+//           <p style={{ color: '#9ca3af', marginTop: '1rem', fontSize: '1.25rem' }}>
+//             Use the 'Stations' menu to add a new station
+//           </p>
+//         </div>
+//       )}
+
+//       {/* Add Station Modal */}
+//       {showAddStationModal && (
+//         <div style={{
+//           position: 'fixed',
+//           top: 0, left: 0, right: 0, bottom: 0,
+//           backgroundColor: 'rgba(0,0,0,0.5)',
+//           display: 'flex',
+//           justifyContent: 'center',
+//           alignItems: 'center',
+//           zIndex: 1002,
+//         }}>
+//           <div style={{
+//             backgroundColor: 'white',
+//             padding: '2rem',
+//             borderRadius: '0.5rem',
+//             width: '500px',
+//             maxHeight: '80vh',
+//             overflow: 'auto'
+//           }}>
+//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+//               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Add Station</h2>
+//               <button 
+//                 onClick={() => setShowAddStationModal(false)}
+//                 style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+//               >
+//                 ×
+//               </button>
+//             </div>
+            
+//             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Station Name:</label>
+//                 <input
+//                   type="text"
+//                   value={newStationData.stationName}
+//                   onChange={(e) => setNewStationData({...newStationData, stationName: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>First Shift Planned Count:</label>
+//                 <input
+//                   type="number"
+//                   value={newStationData.plannedCount1}
+//                   onChange={(e) => setNewStationData({...newStationData, plannedCount1: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Second Shift Planned Count:</label>
+//                 <input
+//                   type="number"
+//                   value={newStationData.plannedCount2}
+//                   onChange={(e) => setNewStationData({...newStationData, plannedCount2: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Third Shift Planned Count:</label>
+//                 <input
+//                   type="number"
+//                   value={newStationData.plannedCount3}
+//                   onChange={(e) => setNewStationData({...newStationData, plannedCount3: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>IP Address:</label>
+//                 <input
+//                   type="text"
+//                   value={newStationData.ipAddress}
+//                   onChange={(e) => setNewStationData({...newStationData, ipAddress: e.target.value})}
+//                   placeholder="192.168.1.100/data"
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Topic:</label>
+//                 <input
+//                   type="text"
+//                   value={newStationData.topic}
+//                   onChange={(e) => setNewStationData({...newStationData, topic: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+//             </div>
+            
+//             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+//               <button
+//                 onClick={handleAddStation}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#10b981',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Add Station
+//               </button>
+//               <button
+//                 onClick={() => setShowAddStationModal(false)}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#6b7280',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Cancel
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+
+//       {/* Shift Timings Modal */}
+//       {showShiftTimingsModal && (
+//         <div style={{
+//           position: 'fixed',
+//           top: 0, left: 0, right: 0, bottom: 0,
+//           backgroundColor: 'rgba(0,0,0,0.5)',
+//           display: 'flex',
+//           justifyContent: 'center',
+//           alignItems: 'center',
+//           zIndex: 1002,
+//         }}>
+//           <div style={{
+//             backgroundColor: 'white',
+//             padding: '2rem',
+//             borderRadius: '0.5rem',
+//             width: '400px'
+//           }}>
+//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+//               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Edit Shift Timings</h2>
+//               <button 
+//                 onClick={() => setShowShiftTimingsModal(false)}
+//                 style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+//               >
+//                 ×
+//               </button>
+//             </div>
+            
+//             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 1 Start (HH:MM):</label>
+//                 <input
+//                   type="time"
+//                   value={shiftTimings.shift1_start}
+//                   onChange={(e) => setShiftTimings({...shiftTimings, shift1_start: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 1 End (HH:MM):</label>
+//                 <input
+//                   type="time"
+//                   value={shiftTimings.shift1_end}
+//                   onChange={(e) => setShiftTimings({...shiftTimings, shift1_end: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 2 Start (HH:MM):</label>
+//                 <input
+//                   type="time"
+//                   value={shiftTimings.shift2_start}
+//                   onChange={(e) => setShiftTimings({...shiftTimings, shift2_start: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 2 End (HH:MM):</label>
+//                 <input
+//                   type="time"
+//                   value={shiftTimings.shift2_end}
+//                   onChange={(e) => setShiftTimings({...shiftTimings, shift2_end: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 3 Start (HH:MM):</label>
+//                 <input
+//                   type="time"
+//                   value={shiftTimings.shift3_start}
+//                   onChange={(e) => setShiftTimings({...shiftTimings, shift3_start: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 3 End (HH:MM):</label>
+//                 <input
+//                   type="time"
+//                   value={shiftTimings.shift3_end}
+//                   onChange={(e) => setShiftTimings({...shiftTimings, shift3_end: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+//             </div>
+            
+//             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+//               <button
+//                 onClick={handleUpdateShiftTimings}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#10b981',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Save Changes
+//               </button>
+//               <button
+//                 onClick={() => setShowShiftTimingsModal(false)}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#6b7280',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Cancel
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+
+//       {/* Edit Station Modal */}
+//       {showEditStationModal && selectedStationForEdit && (
+//         <div style={{
+//           position: 'fixed',
+//           top: 0, left: 0, right: 0, bottom: 0,
+//           backgroundColor: 'rgba(0,0,0,0.5)',
+//           display: 'flex',
+//           justifyContent: 'center',
+//           alignItems: 'center',
+//           zIndex: 1002,
+//         }}>
+//           <div style={{
+//             backgroundColor: 'white',
+//             padding: '2rem',
+//             borderRadius: '0.5rem',
+//             width: '500px',
+//             maxHeight: '80vh',
+//             overflow: 'auto'
+//           }}>
+//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+//               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Edit Station: {selectedStationForEdit.stationName}</h2>
+//               <button 
+//                 onClick={() => setShowEditStationModal(false)}
+//                 style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+//               >
+//                 ×
+//               </button>
+//             </div>
+            
+//             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>First Shift Planned Count:</label>
+//                 <input
+//                   type="number"
+//                   value={editStationData.plannedCount1}
+//                   onChange={(e) => setEditStationData({...editStationData, plannedCount1: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Second Shift Planned Count:</label>
+//                 <input
+//                   type="number"
+//                   value={editStationData.plannedCount2}
+//                   onChange={(e) => setEditStationData({...editStationData, plannedCount2: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Third Shift Planned Count:</label>
+//                 <input
+//                   type="number"
+//                   value={editStationData.plannedCount3}
+//                   onChange={(e) => setEditStationData({...editStationData, plannedCount3: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>IP Address:</label>
+//                 <input
+//                   type="text"
+//                   value={editStationData.ipAddress}
+//                   onChange={(e) => setEditStationData({...editStationData, ipAddress: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+              
+//               <div>
+//                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Topic:</label>
+//                 <input
+//                   type="text"
+//                   value={editStationData.topic}
+//                   onChange={(e) => setEditStationData({...editStationData, topic: e.target.value})}
+//                   style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+//                 />
+//               </div>
+//             </div>
+            
+//             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+//               <button
+//                 onClick={handleEditStation}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#10b981',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Update Station
+//               </button>
+//               <button
+//                 onClick={() => setShowEditStationModal(false)}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#6b7280',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Cancel
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+
+//       {/* Delete Station Modal */}
+//       {showDeleteStationModal && selectedStationForDelete && (
+//         <div style={{
+//           position: 'fixed',
+//           top: 0, left: 0, right: 0, bottom: 0,
+//           backgroundColor: 'rgba(0,0,0,0.5)',
+//           display: 'flex',
+//           justifyContent: 'center',
+//           alignItems: 'center',
+//           zIndex: 1002,
+//         }}>
+//           <div style={{
+//             backgroundColor: 'white',
+//             padding: '2rem',
+//             borderRadius: '0.5rem',
+//             width: '400px'
+//           }}>
+//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+//               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>Delete Station</h2>
+//               <button 
+//                 onClick={() => setShowDeleteStationModal(false)}
+//                 style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+//               >
+//                 ×
+//               </button>
+//             </div>
+            
+//             <div style={{ marginBottom: '2rem' }}>
+//               <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+//                 <p style={{ margin: 0, color: '#dc2626', fontWeight: 'bold' }}>⚠️ Warning: This action cannot be undone!</p>
+//               </div>
+//               <p style={{ margin: 0, fontSize: '1rem' }}>
+//                 Are you sure you want to delete station <strong>"{selectedStationForDelete.stationName}"</strong>?
+//               </p>
+//               <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
+//                 This will permanently remove all associated data including fault records, shift data, and daily records.
+//               </p>
+//             </div>
+            
+//             <div style={{ display: 'flex', gap: '1rem' }}>
+//               <button
+//                 onClick={handleDeleteStation}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#ef4444',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Delete Station
+//               </button>
+//               <button
+//                 onClick={() => setShowDeleteStationModal(false)}
+//                 style={{
+//                   flex: 1,
+//                   backgroundColor: '#6b7280',
+//                   color: 'white',
+//                   padding: '0.75rem',
+//                   border: 'none',
+//                   borderRadius: '0.25rem',
+//                   fontSize: '1rem',
+//                   fontWeight: 'bold',
+//                   cursor: 'pointer'
+//                 }}
+//               >
+//                 Cancel
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+
+//       {/* Reports Modal */}
+//       {showReportsModal && (
+//         <div style={{
+//           position: 'fixed',
+//           top: 0, left: 0, right: 0, bottom: 0,
+//           backgroundColor: 'rgba(0,0,0,0.5)',
+//           display: 'flex',
+//           justifyContent: 'center',
+//           alignItems: 'center',
+//           zIndex: 1002,
+//         }}>
+//           <div style={{
+//             backgroundColor: 'white',
+//             padding: '2rem',
+//             borderRadius: '0.5rem',
+//             width: '500px'
+//           }}>
+//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+//               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Reports</h2>
+//               <button 
+//                 onClick={() => setShowReportsModal(false)}
+//                 style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+//               >
+//                 ×
+//               </button>
+//             </div>
+            
+//             <div style={{ marginBottom: '2rem' }}>
+//               <p style={{ margin: '0 0 1rem 0', color: '#6b7280' }}>
+//                 Generate reports for different data views. Select a report type below:
+//               </p>
+              
+//               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+//                 <button
+//                   onClick={() => { handleViewTable('baydetails'); setShowReportsModal(false); }}
+//                   style={{
+//                     padding: '1rem',
+//                     backgroundColor: '#3b82f6',
+//                     color: 'white',
+//                     border: 'none',
+//                     borderRadius: '0.25rem',
+//                     cursor: 'pointer',
+//                     fontSize: '1rem',
+//                     textAlign: 'left'
+//                   }}
+//                 >
+//                   📊 Bay Details Report
+//                 </button>
+                
+//                 <button
+//                   onClick={() => { handleViewTable('SectionData'); setShowReportsModal(false); }}
+//                   style={{
+//                     padding: '1rem',
+//                     backgroundColor: '#10b981',
+//                     color: 'white',
+//                     border: 'none',
+//                     borderRadius: '0.25rem',
+//                     cursor: 'pointer',
+//                     fontSize: '1rem',
+//                     textAlign: 'left'
+//                   }}
+//                 >
+//                   🔧 Section Data Report
+//                 </button>
+                
+//                 <button
+//                   onClick={() => { handleViewTable('DailyRecord'); setShowReportsModal(false); }}
+//                   style={{
+//                     padding: '1rem',
+//                     backgroundColor: '#f59e0b',
+//                     color: 'white',
+//                     border: 'none',
+//                     borderRadius: '0.25rem',
+//                     cursor: 'pointer',
+//                     fontSize: '1rem',
+//                     textAlign: 'left'
+//                   }}
+//                 >
+//                   📈 Daily Production Report
+//                 </button>
+                
+//                 <button
+//                   onClick={() => { handleViewTable('ShiftData'); setShowReportsModal(false); }}
+//                   style={{
+//                     padding: '1rem',
+//                     backgroundColor: '#8b5cf6',
+//                     color: 'white',
+//                     border: 'none',
+//                     borderRadius: '0.25rem',
+//                     cursor: 'pointer',
+//                     fontSize: '1rem',
+//                     textAlign: 'left'
+//                   }}
+//                 >
+//                   ⏰ Shift Data Report
+//                 </button>
+//               </div>
+//             </div>
+            
+//             <button
+//               onClick={() => setShowReportsModal(false)}
+//               style={{
+//                 width: '100%',
+//                 backgroundColor: '#6b7280',
+//                 color: 'white',
+//                 padding: '0.75rem',
+//                 border: 'none',
+//                 borderRadius: '0.25rem',
+//                 fontSize: '1rem',
+//                 fontWeight: 'bold',
+//                 cursor: 'pointer'
+//               }}
+//             >
+//               Close
+//             </button>
+//           </div>
+//         </div>
+//       )}
+
+//       {/* Table Modal */}
+//       {showTableModal && (
+//         <div style={{
+//           position: 'fixed',
+//           top: 0, left: 0, right: 0, bottom: 0,
+//           backgroundColor: 'rgba(0,0,0,0.5)',
+//           display: 'flex',
+//           justifyContent: 'center',
+//           alignItems: 'center',
+//           zIndex: 1002,
+//         }}>
+//           <div style={{
+//             backgroundColor: 'white',
+//             padding: '1.5rem',
+//             borderRadius: '0.5rem',
+//             width: '90%',
+//             maxWidth: '1200px',
+//             height: '80vh',
+//             display: 'flex',
+//             flexDirection: 'column'
+//           }}>
+//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+//               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>View {selectedTable}</h2>
+//               <button 
+//                 onClick={() => setShowTableModal(false)}
+//                 style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+//               >
+//                 ×
+//               </button>
+//             </div>
+            
+//             <div style={{ flex: 1, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: '0.25rem' }}>
+//               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+//                 <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
+//                   <tr>
+//                     {tableColumns.map(column => (
+//                       <th key={column} style={{ 
+//                         padding: '0.75rem', 
+//                         textAlign: 'left', 
+//                         borderBottom: '1px solid #d1d5db',
+//                         fontWeight: 'bold'
+//                       }}>
+//                         {column}
+//                       </th>
+//                     ))}
+//                   </tr>
+//                 </thead>
+//                 <tbody>
+//                   {tableData.map((row, index) => (
+//                     <tr key={index} style={{ borderBottom: '1px solid #e5e7eb' }}>
+//                       {tableColumns.map(column => (
+//                         <td key={column} style={{ padding: '0.75rem', borderBottom: '1px solid #e5e7eb' }}>
+//                           {row[column] || ''}
+//                         </td>
+//                       ))}
+//                     </tr>
+//                   ))}
+//                 </tbody>
+//               </table>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+//     </div>
 //   );
 // };
 
 // export default Dashboard;
 
+
+// frontend/andon-dashboard/src/Dashboard.js - COMPLETE IMPROVED VERSION
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import io from 'socket.io-client';
 
 const Dashboard = () => {
-  const [stations, setStations] = useState({});
-  const [dailyRecords, setDailyRecords] = useState({});
-  const [socket, setSocket] = useState(null);
+  // State management
+  const [stations, setStations] = useState([]);
+  const [currentStationIndex, setCurrentStationIndex] = useState(0);
+  // eslint-disable-next-line no-unused-vars
+  const [socket, setSocket] = useState(null); // Socket instance for future use
   const [isConnected, setIsConnected] = useState(false);
-  const [summary, setSummary] = useState({});
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [activeSubTab, setActiveSubTab] = useState('');
+  const [activeTab, setActiveTab] = useState('');
+  const [autoSlideActive, setAutoSlideActive] = useState(true);
+  const [currentShift, setCurrentShift] = useState('');
+  const [activeFaults, setActiveFaults] = useState([]);
+  const [showFaultsSidebar, setShowFaultsSidebar] = useState(false);
+  const autoSlideRef = useRef(null);
   const navRef = useRef(null);
-  const [showReportWindow, setShowReportWindow] = useState(false);
-  const [selectedReport, setSelectedReport] = useState('Bay Details');
-  const [downloadPath, setDownloadPath] = useState('');
-  const [fileFormat, setFileFormat] = useState('.xlsx');
-  const [fromDate, setFromDate] = useState(new Date());
-  const [toDate, setToDate] = useState(new Date());
-  const [reportData, setReportData] = useState([]);
-  const [reportColumns, setReportColumns] = useState([]);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState(null);
-  const [reportSuccess, setReportSuccess] = useState(false);
-  const [reportMessage, setReportMessage] = useState('');
-  const [reportType, setReportType] = useState('bay_details');
-  const [showAddStationWindow, setShowAddStationWindow] = useState(false);
-  const [showEditStationWindow, setShowEditStationWindow] = useState(false);
-
-  const [newStationData, setNewStationData] = useState({ name: '' });
-  const [stationEditData, setStationEditData] = useState({ name: '' });
-  const [showShiftTimingsWindow, setShowShiftTimingsWindow] = useState(false);
-
-  const [shiftTimings, setShiftTimings] = useState({
-    shift1Start: '',
-    shift2Start: '',
-    shift3Start: ''
+  
+  // Modal states
+  const [showAddStationModal, setShowAddStationModal] = useState(false);
+  const [showEditStationModal, setShowEditStationModal] = useState(false);
+  const [showDeleteStationModal, setShowDeleteStationModal] = useState(false);
+  const [showShiftTimingsModal, setShowShiftTimingsModal] = useState(false);
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
+  const [selectedStationNameForEdit, setSelectedStationNameForEdit] = useState('');
+  const [selectedStationNameForDelete, setSelectedStationNameForDelete] = useState('');
+  
+  // Additional states for edit/delete
+  const [selectedStationForEdit, setSelectedStationForEdit] = useState(null);
+  const [selectedStationForDelete, setSelectedStationForDelete] = useState(null);
+  const [editStationData, setEditStationData] = useState({
+    stationName: '',
+    plannedCount1: '',
+    plannedCount2: '',
+    plannedCount3: '',
+    ipAddress: '',
+    topic: ''
   });
-
-// Add these functions as well:
-const openAddStationWindow = () => setShowAddStationWindow(true);
-const openEditStationWindow = () => setShowEditStationWindow(true);
-const openDeleteStationWindow = () => alert("Delete logic not implemented yet");
-const openEditShiftTimingsWindow = () => setShowShiftTimingsWindow(true);
-
-const saveNewStation = () => {
-  console.log("Saving station", newStationData);
-  setShowAddStationWindow(false);
-};
-
-const saveStationEdit = () => {
-  console.log("Updating station", stationEditData);
-  setShowEditStationWindow(false);
-};
-
-const saveShiftTimings = () => {
-  console.log("Shift timings saved:", shiftTimings);
-  setShowShiftTimingsWindow(false);
-};
-
-
   
-
-  const reportOptions = {
-    "Bay Details": "baydetails",
-    "Section Data": "SectionData",
-    "Daily_Production_Data": "DailyRecord"
-  };
+  // Form states
+  const [newStationData, setNewStationData] = useState({
+    stationName: '',
+    plannedCount1: '',
+    plannedCount2: '',
+    plannedCount3: '',
+    ipAddress: '',
+    topic: ''
+  });
   
-
-  const modalOverlayStyle = {
-  position: 'fixed',
-  top: 0, left: 0, right: 0, bottom: 0,
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 1002,
-};
-
-const modalContentStyle = {
-  backgroundColor: '#fff',
-  padding: '1rem',
-  borderRadius: '8px',
-  width: '400px',
-  boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-  alignItems: 'center',
-};
-
-const modalHeaderStyle = {
-  display: 'flex',
-  // justifyContent: '',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '1rem',
-  textAlign: 'center',
-  pt: '0px',
-  marginTop: '0px',
-};
-
-const closeBtnStyle = {
-  background: 'none',
-  border: 'none',
-  fontSize: '20px',
-  cursor: 'pointer',
-  textAlign: 'center',
-   pt: '0px',
-   color: 'red',
-   marginTop: '0px',
-};
-
-const saveBtnStyle = {
-  width: '300px',
-     height: '40px' , 
-     borderRadius: '5px', 
-     border: '1px solid #ccc', 
-     padding: '5px', fontSize: '16px',
-      boxSizing: 'border-box', 
-      marginBottom: '10px',
-       marginTop: '5px', 
-       marginLeft: '5px',  
-       textAlign: 'center', 
-       justifyContent: 'center' , 
-       display: 'flex', 
-       flexDirection: 'column',
-        gap: '0.5rem'
-}
+  const [shiftTimings, setShiftTimings] = useState({
+    shift1_start: '05:30',
+    shift1_end: '14:20',
+    shift2_start: '14:20',
+    shift2_end: '00:10',
+    shift3_start: '00:10',
+    shift3_end: '05:30'
+  });
   
+  const [tableData, setTableData] = useState([]);
+  const [tableColumns, setTableColumns] = useState([]);
+  const [selectedTable, setSelectedTable] = useState('');
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
 
-  // Update time every second
+  // Function to determine current shift based on time
+  const getCurrentShift = useCallback(() => {
+    const now = new Date();
+    const currentTimeStr = now.toTimeString().slice(0, 5); // HH:MM format
+    
+    // Convert time strings to comparable minutes since midnight
+    const timeToMinutes = (timeStr) => {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+    
+    const currentMinutes = timeToMinutes(currentTimeStr);
+    const shift1Start = timeToMinutes(shiftTimings.shift1_start);
+    const shift1End = timeToMinutes(shiftTimings.shift1_end);
+    const shift2Start = timeToMinutes(shiftTimings.shift2_start);
+    const shift2End = timeToMinutes(shiftTimings.shift2_end);
+    const shift3Start = timeToMinutes(shiftTimings.shift3_start);
+    const shift3End = timeToMinutes(shiftTimings.shift3_end);
+    
+    // Handle overnight shifts
+    if (shift1End < shift1Start) { // Shift 1 crosses midnight
+      if (currentMinutes >= shift1Start || currentMinutes < shift1End) return 'Shift 1';
+    } else {
+      if (currentMinutes >= shift1Start && currentMinutes < shift1End) return 'Shift 1';
+    }
+    
+    if (shift2End < shift2Start) { // Shift 2 crosses midnight
+      if (currentMinutes >= shift2Start || currentMinutes < shift2End) return 'Shift 2';
+    } else {
+      if (currentMinutes >= shift2Start && currentMinutes < shift2End) return 'Shift 2';
+    }
+    
+    if (shift3End < shift3Start) { // Shift 3 crosses midnight
+      if (currentMinutes >= shift3Start || currentMinutes < shift3End) return 'Shift 3';
+    } else {
+      if (currentMinutes >= shift3Start && currentMinutes < shift3End) return 'Shift 3';
+    }
+    
+    return 'Unknown Shift';
+  }, [shiftTimings]);
+
+  // Update current shift
+  useEffect(() => {
+    const updateShift = () => {
+      setCurrentShift(getCurrentShift());
+    };
+    
+    updateShift();
+    const interval = setInterval(updateShift, 60000); // Update every minute
+    
+    return () => clearInterval(interval);
+  }, [getCurrentShift]);
+
+  // Update active faults when stations change
+  useEffect(() => {
+    const faults = [];
+    stations.forEach(station => {
+      if (station.faultStatus) {
+        Object.entries(station.faultStatus).forEach(([calltype, status]) => {
+          if (status === true) {
+            faults.push({
+              stationName: station.stationName,
+              calltype: calltype,
+              faultTime: station.faultTime || 'Unknown',
+              resolvedTime: station.resolvedTime || null
+            });
+          }
+        });
+      }
+    });
+    setActiveFaults(faults);
+  }, [stations]);
+
+  // Auto-slide functionality (matching Python behavior)
+  const startAutoSlide = useCallback(() => {
+    if (stations.length > 1 && autoSlideActive) {
+      autoSlideRef.current = setInterval(() => {
+        setCurrentStationIndex(prev => (prev + 1) % stations.length);
+      }, 3000); // 3 seconds for better viewing
+    }
+  }, [stations.length, autoSlideActive]);
+
+  const stopAutoSlide = () => {
+    if (autoSlideRef.current) {
+      clearInterval(autoSlideRef.current);
+      autoSlideRef.current = null;
+    }
+  };
+
+  // Navigation functions
+  const nextSlide = () => {
+    stopAutoSlide();
+    setCurrentStationIndex(prev => (prev + 1) % stations.length);
+    setAutoSlideActive(true);
+  };
+
+  const prevSlide = () => {
+    stopAutoSlide();
+    setCurrentStationIndex(prev => (prev - 1 + stations.length) % stations.length);
+    setAutoSlideActive(true);
+  };
+
+  // Socket.IO connection
+  useEffect(() => {
+    const newSocket = io(SOCKET_URL, {
+      transports: ['websocket'],
+      cors: {
+        origin: "http://localhost:3000",
+        methods: ["GET", "POST"]
+      }
+    });
+
+    newSocket.on('connect', () => {
+      console.log('✅ Socket.IO connected');
+      setIsConnected(true);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ Socket.IO disconnected');
+      setIsConnected(false);
+    });
+
+    newSocket.on('stationUpdate', (data) => {
+      console.log('Station update received:', data);
+      setStations(prevStations => {
+        return prevStations.map(station => {
+          if (station.stationName === data.stationName) {
+            return { 
+              ...station, 
+              ...data,
+              // Preserve existing structure while updating with new data
+              actualCount: data.actualCount || station.actualCount,
+              totalDowntime: data.totalDowntime || station.totalDowntime,
+              faultStatus: data.faultStatus || station.faultStatus,
+              faultTime: data.faultTime || station.faultTime,
+              resolvedTime: data.resolvedTime || station.resolvedTime
+            };
+          }
+          return station;
+        });
+      });
+    });
+
+    newSocket.on('connection_status', (data) => {
+      console.log('Connection status:', data);
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [SOCKET_URL]);
+
+  // Update time every second (matching Python)
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-  // ===== Fixed Click Outside Handler =====
+
+  // Auto-slide effect
+  useEffect(() => {
+    startAutoSlide();
+    return () => stopAutoSlide();
+  }, [startAutoSlide]);
+
+  // Click outside handler for navigation
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (navRef.current && !navRef.current.contains(event.target)) {
         setActiveTab('');
-        setActiveSubTab('');
       }
     };
 
@@ -487,461 +1797,342 @@ const saveBtnStyle = {
     };
   }, []);
 
-  // ===== Fixed Toggle Function =====
-  const toggleMenu = (menuName) => {
-    if (activeTab === menuName) {
-      setActiveTab('');
-      setActiveSubTab('');
-    } else {
-      setActiveTab(menuName);
-      setActiveSubTab('');
-    }
-  };
-
-
-
-  const loadReportData = async () => {
-    const tableName = reportOptions[selectedReport];
-    
+  // Fetch initial station data
+  const fetchStations = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/report?table=${tableName}&from=${fromDate.toISOString()}&to=${toDate.toISOString()}`);
+      const response = await fetch(`${API_BASE_URL}/api/stations`);
       const data = await response.json();
       
-      setReportData(data.rows);
-      setReportColumns(data.columns);
+      if (data.success) {
+        setStations(data.stations || []);
+        console.log(`📋 Loaded ${data.stations?.length || 0} stations`);
+      }
     } catch (error) {
-      console.error('Error loading report data:', error);
-      // You might want to add error handling UI here
-    }
-  };
-  
-  const downloadData = async () => {
-    if (!downloadPath) {
-      alert('Please select a download directory');
-      return;
-    }
-  
-    const tableName = reportOptions[selectedReport];
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false }).replace(/:/g, '');
-    const filename = `${tableName.substring(0, 5)}_${fromDate.toISOString().split('T')[0].replace(/-/g, '')}_${timestamp}${fileFormat}`;
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/report/download?table=${tableName}&from=${fromDate.toISOString()}&to=${toDate.toISOString()}&format=${fileFormat.substring(1)}`);
-      const blob = await response.blob();
-      
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      
-      alert(`Data successfully saved as ${filename}`);
-    } catch (error) {
-      console.error('Error downloading report:', error);
-      alert('Failed to download file');
-    }
-  };
-  
-  const browseDownloadPath = () => {
-    // Note: In a real app, you'd need a proper file dialog solution
-    // This is a simplified version for demonstration
-    const path = prompt('Enter download directory path:');
-    if (path) {
-      setDownloadPath(path);
-      // You might want to save this to localStorage or your backend
-    }
-  };
-  
-
-  const initializeStations = useCallback(() => {
-    const initialStations = {};
-    for (let i = 1; i <= 18; i++) {
-      const stationName = `Station${i}`;
-      initialStations[stationName] = {
-        id: i,
-        name: stationName,
-        production: { state: 1, faultTime: null, resolvedTime: null },
-        maintenance: { state: 1, faultTime: null, resolvedTime: null },
-        quality: { state: 1, faultTime: null, resolvedTime: null },
-        store: { state: 1, faultTime: null, resolvedTime: null },
-        actualCount: 0,
-        totalDowntime: 0,
-        currentDowntime: 0,
-        activeFaults: new Set(),
-        efficiency: 0,
-        isActive: true,
-        isAlive: true
-      };
-    }
-    setStations(initialStations);
-  }, []);
-
-  // Fetch initial data from Express API
-  const fetchInitialData = useCallback(async () => {
-    try {
-      // Fetch daily records for today's downtime
-      const dailyResponse = await fetch(`${API_BASE_URL}/api/data/dailyrecord`);
-      const dailyData = await dailyResponse.json();
-      
-      const dailyByStation = {};
-      const today = new Date().toISOString().split('T')[0];
-      
-      dailyData.forEach(record => {
-        if (record.todayDate === today) {
-          dailyByStation[record.stationName] = record;
-        }
-      });
-      
-      setDailyRecords(dailyByStation);
-
-      // Fetch bay details for station information
-      const bayResponse = await fetch(`${API_BASE_URL}/api/data/baydetail`);
-      const bayData = await bayResponse.json();
-      
-      setStations(prev => {
-        const updated = { ...prev };
-        bayData.forEach(bay => {
-          if (updated[bay.stationName]) {
-            updated[bay.stationName].actualCount = bay.actualCount;
-            updated[bay.stationName].efficiency = bay.efficiency;
-            updated[bay.stationName].isActive = bay.isActive;
-            updated[bay.stationName].isAlive = bay.isAlive;
-            updated[bay.stationName].totalDowntime = dailyByStation[bay.stationName]?.totalDowntime || 0;
-          }
-        });
-        return updated;
-      });
-
-      // Fetch current unresolved faults
-      const sectionResponse = await fetch(`${API_BASE_URL}/api/data/sectiondata?date=${today}`);
-      const sectionData = await sectionResponse.json();
-      
-      setStations(prev => {
-        const updated = { ...prev };
-        sectionData.forEach(section => {
-          if (!section.resolvedTime && updated[section.stationName]) {
-            const callType = section.callType.toLowerCase();
-            updated[section.stationName][callType].state = 0;
-            updated[section.stationName][callType].faultTime = new Date(section.faultTime);
-            updated[section.stationName].activeFaults.add(callType);
-          }
-        });
-        return updated;
-      });
-
-      // Fetch dashboard summary
-      const summaryResponse = await fetch(`${API_BASE_URL}/api/dashboard/summary`);
-      const summaryData = await summaryResponse.json();
-      setSummary(summaryData);
-
-    } catch (error) {
-      console.error('Error fetching initial data:', error);
+      console.error('Error fetching stations:', error);
     }
   }, [API_BASE_URL]);
 
-  // Socket.IO connection
-  useEffect(() => {
-    const connectSocket = () => {
-      const newSocket = io(SOCKET_URL, {
-        transports: ['websocket'],
-        cors: {
-          origin: "http://localhost:3000",
-          methods: ["GET", "POST"]
-        }
-      });
-      
-      newSocket.on('connect', () => {
-        console.log('✅ Socket.IO connected');
-        setIsConnected(true);
-      });
-      
-      newSocket.on('disconnect', () => {
-        console.log('❌ Socket.IO disconnected');
-        setIsConnected(false);
-      });
-
-      newSocket.on('connection_status', (data) => {
-        console.log('Connection status:', data);
-      });
-      
-      newSocket.on('station_update', (data) => {
-        handleSocketMessage(data);
-      });
-      
-      newSocket.on('error', (error) => {
-        console.error('Socket.IO error:', error);
-      });
-      
-      setSocket(newSocket);
-    };
-
-    connectSocket();
-
-    return () => {
-      if (socket) {
-        socket.disconnect();
-      }
-    };
-  }, [SOCKET_URL]);
-
-  // Handle Socket.IO messages
-  const handleSocketMessage = useCallback((message) => {
-    console.log('Received socket message:', message);
-    
-    if (message.type === 'station_updates') {
-      setStations(prev => {
-        const updated = { ...prev };
-        
-        message.changes.forEach(change => {
-          const station = updated[change.station];
-          if (!station) return;
-          
-          const callType = change.callType.toLowerCase();
-          
-          if (change.type === 'fault') {
-            // Fault occurred
-            station[callType].state = 0;
-            station[callType].faultTime = new Date(change.time);
-            station[callType].resolvedTime = null;
-            station.activeFaults.add(callType);
-            
-            console.log(`🚨 Fault detected: ${change.station} - ${change.callType}`);
-          } else if (change.type === 'resolved') {
-            // Fault resolved
-            station[callType].state = 1;
-            station[callType].resolvedTime = new Date(change.time);
-            station.activeFaults.delete(callType);
-            
-            // Calculate and add downtime
-            if (station[callType].faultTime) {
-              const downtime = (station[callType].resolvedTime - station[callType].faultTime) / (1000 * 60); // minutes
-              station.totalDowntime += downtime;
-            }
-            
-            console.log(`✅ Fault resolved: ${change.station} - ${change.callType}`);
-          }
-        });
-        
-        // Update actual count if provided
-        if (message.stationData && message.stationData.actualCount !== undefined) {
-          const station = updated[message.stationData.station];
-          if (station) {
-            station.actualCount = message.stationData.actualCount;
-          }
-        }
-        
-        return updated;
-      });
-    }
-  }, []);
-
-  // Calculate current downtime for active faults
-  const getCurrentDowntime = useCallback((station) => {
-    let currentDowntime = 0;
-    const now = new Date();
-    
-    station.activeFaults.forEach(callType => {
-      if (station[callType].faultTime) {
-        currentDowntime += (now - station[callType].faultTime) / (1000 * 60); // minutes
-      }
-    });
-    
-    return currentDowntime;
-  }, []);
-
-  // Get station background color based on active faults
-  const getStationColor = useCallback((station) => {
-    if (station.activeFaults.size > 0) {
-      return '#ef4444';
-    }
-    if (!station.isActive) {
-      return '#6b7280';
-    }
-    if (!station.isAlive) {
-      return '#f59e0b';
-    }
-    return '#10b981';
-  }, []);
-
-  // Format time display
-  const formatTime = (date) => {
-    if (!date) return '--:--';
-    return date.toLocaleTimeString('en-US', { 
-      hour12: false, 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
-  // Format duration in minutes to readable format
-  const formatDuration = (minutes) => {
-    if (minutes < 60) {
-      return `${Math.round(minutes)}m`;
-    } else {
-      const hours = Math.floor(minutes / 60);
-      const mins = Math.round(minutes % 60);
-      return `${hours}h ${mins}m`;
-    }
-  };
-
-  // Manual fault testing functions
-  const createTestFault = async (stationName, callType) => {
+  // Fetch shift timings
+  const fetchShiftTimings = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/sectiondata`, {
+      const response = await fetch(`${API_BASE_URL}/api/shift-config`);
+      const data = await response.json();
+      
+      if (data.success && data.config) {
+        setShiftTimings(data.config);
+      }
+    } catch (error) {
+      console.error('Error fetching shift timings:', error);
+    }
+  }, [API_BASE_URL]);
+
+  useEffect(() => {
+    fetchStations();
+    fetchShiftTimings();
+  }, [fetchStations, fetchShiftTimings]);
+
+  // Add station
+  const handleAddStation = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/stations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          stationName,
-          callType,
-          faultTime: new Date().toISOString()
-        })
+        body: JSON.stringify(newStationData),
       });
-      
-      if (response.ok) {
-        console.log(`Test fault created: ${stationName} - ${callType}`);
+
+      const result = await response.json();
+
+      if (result.success) {
+        setShowAddStationModal(false);
+        setNewStationData({
+          stationName: '',
+          plannedCount1: '',
+          plannedCount2: '',
+          plannedCount3: '',
+          ipAddress: '',
+          topic: ''
+        });
+        fetchStations(); // Reload stations
+        alert('Station added successfully!');
+      } else {
+        alert(`Error: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error creating test fault:', error);
+      console.error('Error adding station:', error);
+      alert('Error adding station');
     }
   };
 
-  // Initialize on mount
-  useEffect(() => {
-    initializeStations();
-    fetchInitialData();
-  }, [initializeStations, fetchInitialData]);
-
-  // Update current downtime every second for active faults
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStations(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(stationName => {
-          if (updated[stationName].activeFaults.size > 0) {
-            updated[stationName].currentDowntime = getCurrentDowntime(updated[stationName]);
-          } else {
-            updated[stationName].currentDowntime = 0;
-          }
-        });
-        return updated;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [getCurrentDowntime]);
-
-  // Calculate totals
-  const totalActualCount = Object.values(stations).reduce((total, station) => total + (station.actualCount || 0), 0);
-  const totalPlanCount = summary?.totalPlanCount || 480;
-  const hasActiveFaults = summary?.activeFaults > 0;
-  const overallStatus = hasActiveFaults ? 'FAULT' : 'OK';
-
-  // Format current date and time
-  const currentDate = currentTime.toLocaleDateString('en-GB');
-  const currentTimeString = currentTime.toLocaleTimeString('en-GB');
-
-  // const openAddStationWindow = (station) => {
-  //   console.log("Opening Add Station window");
-  //   // Implement your add station logic here
-  //   // For example, open a modal or navigate to a new page  
-  //     const url = `/station/${station.id}`; // or absolute URL
-  //     window.open(url, '_blank', 'width=600,height=400');
-
-  // };
-
-  // const openEditStationWindow = () => {
-  //   console.log("Opening Edit Station window");
-  //   // Implement your edit station logic here
-  // };
-
-  // const openDeleteStationWindow = () => {
-  //   console.log("Opening Delete Station window");
-  //   // Implement your delete station logic here
-  // };
-
-  // const openEditShiftTimingsWindow = () => {
-  //   console.log("Opening Edit Shift Timings window");
-  //   // Implement your shift timings logic here
-  // };
-
-  // Table view functions
-  const viewTable = (tableName) => {
-    console.log(`Viewing table: ${tableName}`);
-    setActiveSubTab(tableName.toLowerCase());
-    // Implement your table viewing logic here
+  // Edit station functions
+  const openEditStationModal = () => {
+    if (stations.length === 0) {
+      alert('No stations available to edit');
+      return;
+    }
+    setSelectedStationNameForEdit('');          // force user to pick
+    setSelectedStationForEdit(null);
+    setShowEditStationModal(true);
+    setActiveTab('');
   };
 
-  // Reports function
-  const viewReports = () => {
-    console.log("Viewing reports");
+  const handleEditStation = async () => {
+    if (!selectedStationForEdit) return;
 
-    // Implement your reports logic here
+    if (!selectedStationForEdit.stationName) {
+      alert('Invalid station data - station name is missing');
+      return;
+    }
+
+    try {
+      console.log('Updating station:', selectedStationForEdit.stationName);
+      const response = await fetch(`${API_BASE_URL}/api/stations/${encodeURIComponent(selectedStationForEdit.stationName)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editStationData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setShowEditStationModal(false);
+        setSelectedStationForEdit(null);
+        setSelectedStationNameForEdit('');
+        fetchStations(); // Reload stations
+        alert('Station updated successfully!');
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error updating station:', error);
+      alert('Error updating station');
+    }
+  };
+
+  // Delete station functions
+  const openDeleteStationModal = () => {
+    if (stations.length === 0) {
+      alert('No stations available to delete');
+      return;
+    }
+    setSelectedStationForDelete(null); // Reset selection
+    setShowDeleteStationModal(true);
+    setActiveTab('');
+  };
+
+  const handleDeleteStation = async () => {
+    if (!selectedStationForDelete) {
+      alert('Please select a station to delete');
+      return;
+    }
+
+    if (!selectedStationForDelete.stationName) {
+      alert('Invalid station data - station name is missing');
+      return;
+    }
+
+    try {
+      const stationName = selectedStationForDelete.stationName;
+      const encodedStationName = encodeURIComponent(stationName);
+      const url = `${API_BASE_URL}/api/stations/${encodedStationName}`;
+      
+      console.log('Deleting station:', stationName);
+      console.log('Encoded station name:', encodedStationName);
+      console.log('Full URL:', url);
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+      });
+
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
+      const result = await response.json();
+      console.log('Response result:', result);
+
+      if (result.success) {
+        setShowDeleteStationModal(false);
+        setSelectedStationForDelete(null);
+        fetchStations(); // Reload stations
+        alert('Station deleted successfully!');
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting station:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      alert('Error deleting station');
+    }
+  };
+
+  // Update shift timings
+  const handleUpdateShiftTimings = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/shift-config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(shiftTimings),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setShowShiftTimingsModal(false);
+        alert('Shift timings updated successfully!');
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error updating shift timings:', error);
+      alert('Error updating shift timings');
+    }
+  };
+
+  // View table data
+  const handleViewTable = async (tableName) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tables/${tableName}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setTableData(data.rows || []);
+        setTableColumns(data.columns || []);
+        setSelectedTable(tableName);
+        setShowTableModal(true);
+        setActiveTab(''); // Close dropdown
+      }
+    } catch (error) {
+      console.error('Error fetching table data:', error);
+    }
+  };
+
+  // Get current station
+  const currentStation = stations[currentStationIndex];
+
+  // Format time (matching Python format)
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-GB', { 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-GB');
+  };
+
+  // Get station color based on fault status (matching Python logic)
+  const getStationBgColor = (station) => {
+    if (!station) return '#f0f8ff';
+    
+    const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
+    return hasActiveFault ? '#ffe6e6' : '#f0f8ff';
+  };
+
+  const getStatusColor = (station) => {
+    if (!station) return '#27ae60';
+    
+    const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
+    return hasActiveFault ? '#e74c3c' : '#27ae60';
+  };
+
+  const getStatusText = (station) => {
+    if (!station) return '✅ OK Status';
+    
+    const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
+    
+    if (hasActiveFault) {
+      const activeFaults = Object.entries(station.faultStatus || {})
+        .filter(([_, status]) => status === true)
+        .map(([calltype]) => calltype);
+      return `⚠️ FAULT: ${activeFaults.join(', ')}`;
+    }
+    
+    return '✅ OK Status';
+  };
+
+  // Toggle menu function
+  const toggleMenu = (menuName) => {
+    if (activeTab === menuName) {
+      setActiveTab('');
+    } else {
+      setActiveTab(menuName);
+    }
   };
 
   return (
     <div style={{ 
       minHeight: '100vh', 
-      backgroundColor: '#e5e7eb', 
+      backgroundColor: '#ecf0f1', 
       padding: '0.5rem',
       fontFamily: 'Arial, sans-serif'
     }}>
-      {/* Header - Responsive */}
+      {/* Header - matching Python layout exactly */}
       <div style={{
         backgroundColor: 'white',
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: '0.75rem 1rem',
         marginBottom: '0.5rem',
         display: 'flex',
-        flexDirection: window.innerWidth < 768 ? 'column' : 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
         gap: '1rem'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        {/* Left logos - JBM and Ogihara */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{
-              width: '2rem', height: '2rem', borderRadius: '50%',
+              width: '3rem', height: '3rem', borderRadius: '50%',
               backgroundColor: '#2563eb', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: 'white', fontWeight: 'bold'
+              justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '1.5rem'
             }}>J</div>
-            <span style={{ fontWeight: 'bold', fontSize: '1.25rem' }}>JBM</span>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Group</span>
+            <span style={{ fontWeight: 'bold', fontSize: '1.5rem' }}>JBM</span>
+            <span style={{ fontSize: '1rem', color: '#6b7280' }}>Group</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{
-              width: '2rem', height: '2rem', borderRadius: '50%',
+              width: '3rem', height: '3rem', borderRadius: '50%',
               backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: 'white', fontWeight: 'bold'
+              justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '1.5rem'
             }}>O</div>
-            <span style={{ fontWeight: 'bold', fontSize: '1.25rem', color: '#2563eb' }}>Ogihara</span>
+            <span style={{ fontWeight: 'bold', fontSize: '1.5rem', color: '#2563eb' }}>Ogihara</span>
           </div>
         </div>
         
-        <div style={{ textAlign: 'center' }}>
+        {/* Center title - matching Python styling */}
+        <div style={{ textAlign: 'center', flex: 1 }}>
           <h1 style={{
-            fontSize: window.innerWidth < 768 ? '1.5rem' : '1.875rem',
+            fontSize: '2.5rem',
             fontWeight: 'bold',
             color: '#1d4ed8',
             fontStyle: 'italic',
-            margin: 0
+            margin: 0,
+            fontFamily: 'Times New Roman'
           }}>Andon Dashboard</h1>
         </div>
         
-        <div style={{ textAlign: window.innerWidth < 768 ? 'center' : 'right' }}>
-          <div style={{ fontSize: '1.125rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            {currentDate}
+        {/* Right date/time - matching Python format */}
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+            {formatDate(currentTime)}
           </div>
           <div style={{
-            fontFamily: 'monospace', fontSize: '1rem', fontWeight: 'bold',
-            backgroundColor: '#1f2937', color: '#00ff00', padding: '0.5rem',
+            fontFamily: 'monospace', fontSize: '1.25rem', fontWeight: 'bold',
+            backgroundColor: '#1f2937', color: '#00ff00', padding: '0.75rem',
             borderRadius: '0.25rem', border: '2px solid #374151', letterSpacing: '1px'
           }}>
-            {currentTimeString}
+            {formatTime(currentTime)}
           </div>
           <div style={{
             fontSize: '0.875rem',
@@ -952,36 +2143,38 @@ const saveBtnStyle = {
           </div>
         </div>
       </div>
-      {/* Navigation Bar */}
-      <nav ref={navRef} // Properly attached ref
-        style={{
-          backgroundColor: '#1e40af',
-          color: 'white',
-          padding: '0.5rem',
-          marginBottom: '1rem',
-          borderRadius: '0.25rem',
-          position: 'relative',
-          zIndex: 1000
-        }}>
+
+      {/* Navigation Bar - IMPROVED with centered layout */}
+      <nav ref={navRef} style={{
+        backgroundColor: '#1e40af',
+        color: 'white',
+        padding: '0.75rem',
+        marginBottom: '1rem',
+        borderRadius: '0.25rem',
+        position: 'relative',
+        zIndex: 1000
+      }}>
         <ul style={{
           display: 'flex',
           listStyle: 'none',
           margin: 0,
           padding: 0,
-          gap: '1rem'
+          justifyContent: 'space-around', // Centers and spaces the 3 main options
+          alignItems: 'center'
         }}>
-          {/* Stations Tab */}
-          <li style={{ position: 'relative' }}>
+          {/* Stations Dropdown */}
+          <li style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center' }}>
             <button 
               onClick={() => toggleMenu('stations')}
               style={{
                 backgroundColor: activeTab === 'stations' ? '#3b82f6' : 'transparent',
                 color: 'white',
                 border: 'none',
-                padding: '0.5rem 1rem',
+                padding: '0.75rem 1.5rem',
                 borderRadius: '0.25rem',
                 cursor: 'pointer',
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                fontSize: '1.1rem'
               }}
             >
               Stations
@@ -990,112 +2183,64 @@ const saveBtnStyle = {
               <div style={{
                 position: 'absolute',
                 top: '100%',
-                left: 0,
+                left: '50%',
+                transform: 'translateX(-50%)',
                 backgroundColor: 'white',
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
                 borderRadius: '0.25rem',
                 zIndex: 10,
-                width: '250px'
+                minWidth: '250px',
+                color: '#374151'
               }}>
-                <div style={{
-                  padding: '0.5rem',
-                  borderBottom: '1px solid #e5e7eb'
-                }}>
-                  <button 
-                    onClick={openAddStationWindow }
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '0.5rem',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Add Station
-                  </button>
-                  <button 
-                    onClick={openEditStationWindow}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '0.5rem',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Edit Station
-                  </button>
-                  <button 
-                    onClick={openDeleteStationWindow}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '0.5rem',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Delete Station
-                  </button>
-                 <button 
-                    onClick={() => setShowShiftTimingsWindow(true)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '0.5rem',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Edit Shift Timings
-                  </button>
-
-                </div>
-                <div style={{ padding: '0.5rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>Current Stations</h4>
-                  <div style={{ 
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: '0.25rem'
-                  }}>
-                    {Object.keys(stations).map(stationName => (
-                      <div key={stationName} style={{
+                <button onClick={() => { setShowAddStationModal(true); setActiveTab(''); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+                  Add Station
+                </button>
+                <button onClick={openEditStationModal}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+                  Edit Station
+                </button>
+                <button onClick={openDeleteStationModal}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+                  Delete Station
+                </button>
+                <button onClick={() => { setShowShiftTimingsModal(true); setActiveTab(''); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
+                  Edit Shift Timings
+                </button>
+                <div style={{ padding: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#374151', fontSize: '0.875rem' }}>Current Stations ({stations.length})</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.25rem' }}>
+                    {stations.map(station => (
+                      <div key={station.stationName} style={{
                         backgroundColor: '#e5e7eb',
                         padding: '0.25rem',
                         borderRadius: '0.25rem',
                         fontSize: '0.75rem',
                         textAlign: 'center'
                       }}>
-                        {stationName}
+                        {station.stationName}
                       </div>
                     ))}
                   </div>
                 </div>
-                
               </div>
             )}
           </li>
 
-          {/* Data Views Tab */}
-          <li style={{ position: 'relative' }}>
+          {/* Data Views Dropdown */}
+          <li style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center' }}>
             <button 
               onClick={() => toggleMenu('data')}
               style={{
                 backgroundColor: activeTab === 'data' ? '#3b82f6' : 'transparent',
                 color: 'white',
                 border: 'none',
-                padding: '0.5rem 1rem',
+                padding: '0.75rem 1.5rem',
                 borderRadius: '0.25rem',
                 cursor: 'pointer',
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                fontSize: '1.1rem'
               }}
             >
               Data Views
@@ -1104,290 +2249,83 @@ const saveBtnStyle = {
               <div style={{
                 position: 'absolute',
                 top: '100%',
-                left: 0,
+                left: '50%',
+                transform: 'translateX(-50%)',
                 backgroundColor: 'white',
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
                 borderRadius: '0.25rem',
                 zIndex: 10,
-                width: '200px'
+                minWidth: '200px',
+                color: '#374151'
               }}>
-                <button 
-                  onClick={() => viewTable('baydetails')}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: activeSubTab === 'baydetails' ? '#e5e7eb' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#374151'
-                  }}
-                >
+                <button onClick={() => handleViewTable('baydetails')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
                   View BayDetails
                 </button>
-                <button 
-                  onClick={() => viewTable('sectiondata')}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: activeSubTab === 'sectiondata' ? '#e5e7eb' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#374151'
-                  }}
-                >
+                <button onClick={() => handleViewTable('SectionData')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
                   View SectionData
                 </button>
-                <button 
-                  onClick={() => viewTable('dailyrecord')}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: activeSubTab === 'dailyrecord' ? '#e5e7eb' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#374151'
-                  }}
-                >
+                <button onClick={() => handleViewTable('DailyRecord')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
                   View DailyRecord
                 </button>
-                <button 
-                  onClick={() => viewTable('shiftdata')}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: activeSubTab === 'shiftdata' ? '#e5e7eb' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#374151'
-                  }}
-                >
+                <button onClick={() => handleViewTable('ShiftData')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
                   Shift Data
                 </button>
-                <button 
-                  onClick={() => viewTable('shiftbaselines')}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: activeSubTab === 'shiftbaselines' ? '#e5e7eb' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#374151'
-                  }}
-                >
+                <button onClick={() => handleViewTable('ShiftBaselines')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}>
                   Shift Baselines
                 </button>
               </div>
             )}
           </li>
 
-          {/* Reports Tab */}
-          <li>
+          {/* Reports */}
+          <li style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
             <button 
-              onClick={() => toggleMenu('reports')}
+              onClick={() => { setShowReportsModal(true); setActiveTab(''); }}
               style={{
-                backgroundColor: activeTab === 'data' ? '#3b82f6' : 'transparent',
+                backgroundColor: 'transparent',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.25rem',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '1.1rem'
+              }}
+            >
+              Reports
+            </button>
+          </li>
+
+          {/* Active Faults Button - NEW */}
+          <li style={{ position: 'absolute', right: '1rem' }}>
+            <button 
+              onClick={() => setShowFaultsSidebar(!showFaultsSidebar)}
+              style={{
+                backgroundColor: activeFaults.length > 0 ? '#ef4444' : '#6b7280',
                 color: 'white',
                 border: 'none',
                 padding: '0.5rem 1rem',
                 borderRadius: '0.25rem',
                 cursor: 'pointer',
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
               }}
             >
-              Reports 
+              🚨 Faults ({activeFaults.length})
             </button>
-            {activeTab === 'reports' && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                right: 0,
-                margin: '0 15rem',
-                backgroundColor: 'white',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                borderRadius: '0.25rem',
-                zIndex: 10,
-                width: '200px'
-              }}>
-                <button 
-                  onClick={() => setShowReportWindow(true)}
-                  style={{
-                    display: 'block',
-                    width: 'fit-content',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#374151'
-                  }}
-                >
-                  Generate Report
-                </button>
-              </div>
-            )}
           </li>
-          
         </ul>
       </nav>
-      {showReportWindow && (
-  <div style={{
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: '700px',
-    height: '400px',
-    backgroundColor: 'white',
-    boxShadow: '0 0 20px rgba(0,0,0,0.2)',
-    zIndex: 1001,
-    display: 'grid',
-    gridTemplateColumns: '180px 1fr'
-  }}>
-    {/* LEFT FRAME */}
-    <div style={{
-      backgroundColor: '#f0f0f0',
-      padding: '8px',
-      overflowY: 'auto'
-    }}>
-      {/* Report options */}
-      <div style={{ marginBottom: '10px' }}>
-        <select 
-          value={selectedReport}
-          onChange={(e) => setSelectedReport(e.target.value)}
-          style={{ width: '100%', padding: '5px' }}
-        >
-          {Object.keys(reportOptions).map(option => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
-      </div>
 
-      {/* Download Path */}
-      <div style={{ marginBottom: '10px' }}>
-        <label style={{ display: 'block', marginBottom: '5px' }}>Download Path:</label>
-        <input
-          type="text"
-          value={downloadPath}
-          onChange={(e) => setDownloadPath(e.target.value)}
-          style={{ width: '100%', padding: '5px' }}
-        />
-        <button 
-          onClick={browseDownloadPath}
-          style={{ marginTop: '5px', padding: '5px 10px' }}
-        >
-          Browse
-        </button>
-      </div>
-
-      {/* Format selection */}
-      <div style={{ marginBottom: '10px' }}>
-        <label style={{ display: 'block', marginBottom: '5px' }}>Select Format:</label>
-        <select
-          value={fileFormat}
-          onChange={(e) => setFileFormat(e.target.value)}
-          style={{ width: '100%', padding: '5px' }}
-        >
-          <option value=".xlsx">.xlsx</option>
-          <option value=".csv">.csv</option>
-        </select>
-      </div>
-
-      {/* Date selectors */}
-      <div style={{ marginBottom: '10px' }}>
-        <label style={{ display: 'block', marginBottom: '5px' }}>From Date:</label>
-        <input
-          type="date"
-          value={fromDate.toISOString().split('T')[0]}
-          onChange={(e) => setFromDate(new Date(e.target.value))}
-          style={{ width: '100%', padding: '5px' }}
-        />
-
-        <label style={{ display: 'block', marginTop: '10px', marginBottom: '5px' }}>To Date:</label>
-        <input
-          type="date"
-          value={toDate.toISOString().split('T')[0]}
-          onChange={(e) => setToDate(new Date(e.target.value))}
-          style={{ width: '100%', padding: '5px' }}
-        />
-      </div>
-
-      {/* Download button */}
-      <button 
-        onClick={downloadData}
-        style={{ 
-          marginTop: '10px',
-          padding: '5px 10px',
-          backgroundColor: '#4CAF50',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer'
-        }}
-      >
-        Download
-      </button>
-    </div>
-
-    {/* RIGHT FRAME */}
-    <div style={{
-      padding: '5px',
-      overflow: 'auto'
-    }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#f2f2f2' }}>
-            {reportColumns.map(column => (
-              <th key={column} style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {reportData.map((row, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #ddd' }}>
-              {reportColumns.map(column => (
-                <td key={column} style={{ padding: '8px', border: '1px solid #ddd' }}>
-                  {row[column]}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-
-    {/* Close button */}
-    <button 
-      onClick={() => setShowReportWindow(false)}
-      style={{
-        position: 'absolute',
-        top: '5px',
-        right: '5px',
-        background: 'none',
-        border: 'none',
-        fontSize: '16px',
-        cursor: 'pointer'
-      }}
-    >
-      ×
-    </button>
-  </div>
-)}
-
-
-      {/* Station Header - Responsive */}
+      {/* Station Header with Navigation - matching Python layout */}
       <div style={{
         backgroundColor: '#374151',
         color: 'white',
@@ -1396,173 +2334,1031 @@ const saveBtnStyle = {
         marginBottom: '1rem',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        borderRadius: '0.5rem'
       }}>
-        <button style={{
-          backgroundColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem',
-          border: 'none', borderRadius: '0.25rem', cursor: 'pointer'
-        }}>◀</button>
+        <button 
+          onClick={prevSlide}
+          disabled={stations.length <= 1}
+          style={{
+            backgroundColor: '#3b82f6', 
+            color: 'white', 
+            padding: '0.75rem 1.25rem',
+            border: 'none', 
+            borderRadius: '0.25rem', 
+            cursor: stations.length > 1 ? 'pointer' : 'not-allowed',
+            fontSize: '1rem',
+            fontWeight: 'bold',
+            opacity: stations.length > 1 ? 1 : 0.5
+          }}
+        >
+          ◀ Previous
+        </button>
+        
         <h2 style={{
-          fontSize: window.innerWidth < 768 ? '1.875rem' : '3rem',
+          fontSize: '3rem',
           fontWeight: 'bold',
-          margin: 0
-        }}>Production Line</h2>
-        <button style={{
-          backgroundColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem',
-          border: 'none', borderRadius: '0.25rem', cursor: 'pointer'
-        }}>▶</button>
+          margin: 0,
+          flex: 1
+        }}>
+          Production Line
+        </h2>
+        
+        <button 
+          onClick={nextSlide}
+          disabled={stations.length <= 1}
+          style={{
+            backgroundColor: '#3b82f6', 
+            color: 'white', 
+            padding: '0.75rem 1.25rem',
+            border: 'none', 
+            borderRadius: '0.25rem', 
+            cursor: stations.length > 1 ? 'pointer' : 'not-allowed',
+            fontSize: '1rem',
+            fontWeight: 'bold',
+            opacity: stations.length > 1 ? 1 : 0.5
+          }}
+        >
+          Next ▶
+        </button>
       </div>
 
-      {/* Metrics Grid - Responsive */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: window.innerWidth < 768 ? '1fr' : 'repeat(3, 1fr)',
-        gap: '1rem',
-        marginBottom: '1rem'
-      }}>
+      {/* Main Station Display - exact layout match with Python */}
+      {currentStation ? (
         <div style={{
-          backgroundColor: '#3b82f6', color: 'white', padding: '2rem',
-          textAlign: 'center', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+          backgroundColor: getStationBgColor(currentStation),
+          padding: '2rem',
+          borderRadius: '0.5rem',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          marginBottom: '1rem'
         }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>Plan Count</h3>
-          <p style={{ fontSize: '3rem', fontWeight: 'bold', margin: 0 }}>{totalPlanCount}</p>
-        </div>
+          {/* Station Name Header with Shift - matching Python styling */}
+          <div style={{
+            backgroundColor: '#2c3e50',
+            color: 'white',
+            textAlign: 'center',
+            padding: '1.5rem',
+            marginBottom: '2rem',
+            borderRadius: '0.5rem',
+            border: '3px solid #34495e'
+          }}>
+            <h1 style={{
+              fontSize: '4rem',
+              fontWeight: 'bold',
+              margin: 0
+            }}>
+              {currentStation.stationName}
+            </h1>
+            <div style={{
+              fontSize: '1.5rem',
+              marginTop: '0.5rem',
+              color: '#ecf0f1'
+            }}>
+              {currentShift}
+            </div>
+          </div>
 
-        <div style={{
-          backgroundColor: '#059669', color: 'white', padding: '2rem',
-          textAlign: 'center', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-        }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>Actual Count</h3>
-          <p style={{ fontSize: '3rem', fontWeight: 'bold', margin: 0 }}>{totalActualCount}</p>
-        </div>
+          {/* Metrics Cards Row - matching Python card colors and layout */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '1.5rem',
+            marginBottom: '2rem'
+          }}>
+            {/* Plan Count Card - Blue */}
+            <div style={{
+              backgroundColor: '#3498db',
+              color: 'white',
+              padding: '2rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              border: '3px solid #2980b9',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+                Plan Count
+              </h3>
+              <p style={{ fontSize: '3rem', fontWeight: 'bold', margin: 0 }}>
+                {currentStation.planCount || 0}
+              </p>
+            </div>
 
+            {/* Actual Count Card - Green */}
+            <div style={{
+              backgroundColor: '#478778',
+              color: 'white',
+              padding: '2rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              border: '3px solid #27ae60',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+                Actual Count
+              </h3>
+              <p style={{ fontSize: '3rem', fontWeight: 'bold', margin: 0 }}>
+                {currentStation.actualCount || 0}
+              </p>
+            </div>
+
+            {/* Total Downtime Card - Orange */}
+            <div style={{
+              backgroundColor: '#f39c12',
+              color: 'white',
+              padding: '2rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              border: '3px solid #e67e22',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+                Total Downtime
+              </h3>
+              <p style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0 }}>
+                {currentStation.totalDowntime ? `${currentStation.totalDowntime.toFixed(1)} mins` : '0.0 mins'}
+              </p>
+            </div>
+          </div>
+
+          {/* Time Information Row - matching Python layout */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '1.5rem',
+            marginBottom: '2rem'
+          }}>
+            {/* Fault Time Card - Purple */}
+            <div style={{
+              backgroundColor: '#9b59b6',
+              color: 'white',
+              padding: '2rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              border: '3px solid #8e44ad',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+                Fault Time
+              </h3>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                {currentStation.faultTime || '--:--:--'}
+              </p>
+            </div>
+
+            {/* Resolved Time Card - Teal */}
+            <div style={{
+              backgroundColor: '#1abc9c',
+              color: 'white',
+              padding: '2rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              border: '3px solid #16a085',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>
+                Resolved Time
+              </h3>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                {currentStation.resolvedTime || '--:--:--'}
+              </p>
+            </div>
+          </div>
+
+          {/* Status Bar - matching Python fault/ok status */}
+          <div style={{
+            backgroundColor: getStatusColor(currentStation),
+            color: 'white',
+            padding: '2rem',
+            borderRadius: '0.5rem',
+            textAlign: 'center',
+            border: '3px solid rgba(0,0,0,0.1)',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+          }}>
+            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+              {getStatusText(currentStation)}
+            </p>
+          </div>
+        </div>
+      ) : (
         <div style={{
-          backgroundColor: '#f59e0b', color: 'white', padding: '2rem',
-          textAlign: 'center', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+          backgroundColor: 'white',
+          padding: '4rem 2rem',
+          borderRadius: '0.5rem',
+          textAlign: 'center',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
         }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>Total Downtime</h3>
-          <p style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0 }}>
-            {formatDuration(summary?.totalDowntime || 0)}
+          <h2 style={{ color: '#6b7280', margin: 0, fontSize: '2rem' }}>
+            No stations available to display
+          </h2>
+          <p style={{ color: '#9ca3af', marginTop: '1rem', fontSize: '1.25rem' }}>
+            Use the 'Stations' menu to add a new station
           </p>
         </div>
-      </div>
+      )}
 
-      {/* Bottom Row - Responsive */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: window.innerWidth < 768 ? '1fr' : 'repeat(2, 1fr)',
-        gap: '1rem',
-        marginBottom: '1rem'
-      }}>
+      {/* Active Faults Sidebar */}
+      {showFaultsSidebar && (
         <div style={{
-          backgroundColor: '#7c3aed', color: 'white', padding: '2rem',
-          textAlign: 'center', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          height: '100vh',
+          width: '350px',
+          backgroundColor: 'white',
+          boxShadow: '-4px 0 6px rgba(0,0,0,0.1)',
+          zIndex: 1001,
+          display: 'flex',
+          flexDirection: 'column'
         }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>Total Faults</h3>
-          <p style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0 }}>{summary?.totalFaults || 0}</p>
-        </div>
-
-        <div style={{
-          backgroundColor: '#0d9488', color: 'white', padding: '2rem',
-          textAlign: 'center', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-        }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 1rem 0' }}>Resolved Faults</h3>
-          <p style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0 }}>{summary?.resolvedFaults || 0}</p>
-        </div>
-      </div>
-
-      {/* Active Faults Display */}
-      {summary?.activeFaults > 0 && (
-        <div style={{
-          backgroundColor: '#ef4444', color: 'white', textAlign: 'center',
-          padding: '1.5rem', borderRadius: '0.5rem', marginBottom: '1rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1.5rem' }}>⚠</span>
-            <span style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-              Active Faults: {summary.activeFaults}
-            </span>
+          <div style={{
+            backgroundColor: '#ef4444',
+            color: 'white',
+            padding: '1rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Active Faults</h3>
+            <button 
+              onClick={() => setShowFaultsSidebar(false)}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                color: 'white',
+                fontSize: '1.5rem',
+                cursor: 'pointer'
+              }}
+            >
+              ×
+            </button>
+          </div>
+          
+          <div style={{
+            flex: 1,
+            overflow: 'auto',
+            padding: '1rem'
+          }}>
+            {activeFaults.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '2rem',
+                color: '#6b7280'
+              }}>
+                <p style={{ fontSize: '1.25rem', margin: 0 }}>✅ No active faults</p>
+                <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>All stations are operating normally</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {activeFaults.map((fault, index) => (
+                  <div key={index} style={{
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '0.5rem',
+                    padding: '1rem'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <h4 style={{ margin: 0, color: '#dc2626', fontWeight: 'bold' }}>
+                        {fault.stationName}
+                      </h4>
+                      <span style={{
+                        backgroundColor: '#dc2626',
+                        color: 'white',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                      }}>
+                        {fault.calltype}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      <p style={{ margin: '0.25rem 0' }}>
+                        <strong>Fault Time:</strong> {fault.faultTime}
+                      </p>
+                      {fault.resolvedTime && (
+                        <p style={{ margin: '0.25rem 0' }}>
+                          <strong>Resolved:</strong> {fault.resolvedTime}
+                        </p>
+                      )}
+                      {!fault.resolvedTime && (
+                        <p style={{ margin: '0.25rem 0', color: '#dc2626' }}>
+                          <strong>Status:</strong> Ongoing
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Status Bar - Removed extra space */}
-      <div style={{
-        backgroundColor: hasActiveFaults ? '#ef4444' : '#10b981',
-        color: 'white', textAlign: 'center', padding: '1.5rem',
-        borderRadius: '0.5rem', marginBottom: '1rem'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+      {/* Add Station Modal */}
+      {showAddStationModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1002,
+        }}>
           <div style={{
-            width: '1rem', height: '3.75rem', backgroundColor: 'white',
-            borderRadius: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '0.5rem',
+            width: '500px',
+            maxHeight: '80vh',
+            overflow: 'auto'
           }}>
-            <span style={{
-              color: hasActiveFaults ? '#ef4444' : '#10b981',
-              fontWeight: 'bold', fontSize: '0.75rem'
-            }}>
-              {hasActiveFaults ? '⚠' : '✓'}
-            </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Add Station</h2>
+              <button 
+                onClick={() => setShowAddStationModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Station Name:</label>
+                <input
+                  type="text"
+                  value={newStationData.stationName}
+                  onChange={(e) => setNewStationData({...newStationData, stationName: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>First Shift Planned Count:</label>
+                <input
+                  type="number"
+                  value={newStationData.plannedCount1}
+                  onChange={(e) => setNewStationData({...newStationData, plannedCount1: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Second Shift Planned Count:</label>
+                <input
+                  type="number"
+                  value={newStationData.plannedCount2}
+                  onChange={(e) => setNewStationData({...newStationData, plannedCount2: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Third Shift Planned Count:</label>
+                <input
+                  type="number"
+                  value={newStationData.plannedCount3}
+                  onChange={(e) => setNewStationData({...newStationData, plannedCount3: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>IP Address:</label>
+                <input
+                  type="text"
+                  value={newStationData.ipAddress}
+                  onChange={(e) => setNewStationData({...newStationData, ipAddress: e.target.value})}
+                  placeholder="192.168.1.100/data"
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Topic:</label>
+                <input
+                  type="text"
+                  value={newStationData.topic}
+                  onChange={(e) => setNewStationData({...newStationData, topic: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+              <button
+                onClick={handleAddStation}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Add Station
+              </button>
+              <button
+                onClick={() => setShowAddStationModal(false)}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-          <span style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{overallStatus} Status</span>
         </div>
-      </div>
- {showAddStationWindow && (
-  <div style={modalOverlayStyle}>
-    <div style={modalContentStyle}>
-      <div style={modalHeaderStyle}>
-        <h3 style={{textAlign: 'center'}}>Add Station</h3>
-        <button onClick={() => setShowAddStationWindow(false)} style={closeBtnStyle}>×</button>
-      </div>
-      <div>
-        <label>Station Name:</label>
-        <input type="text" value={newStationData.name} onChange={(e) => setNewStationData({ ...newStationData, name: e.target.value })} />
-        {/* Add more inputs as needed */}
-      </div>
-      <button onClick={saveNewStation} style={saveBtnStyle}>Save</button>
-    </div>
-  </div>
-)}
+      )}
 
-{showEditStationWindow && (
-  <div style={modalOverlayStyle}>
-    <div style={modalContentStyle}>
-      <div style={modalHeaderStyle}>
-        <h3>Edit Station</h3>
-        <button onClick={() => setShowEditStationWindow(false)} style={closeBtnStyle}>×</button>
-      </div>
-      <div>
-        <label>Station Name:</label>
-        <input type="text" value={stationEditData.name} onChange={(e) => setStationEditData({ ...stationEditData, name: e.target.value })} />
-        {/* Add more edit fields */}
-      </div>
-      <button onClick={saveStationEdit}style={saveBtnStyle}>Update</button>
-    </div>
-  </div>
-)}
+      {/* Shift Timings Modal */}
+      {showShiftTimingsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1002,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '0.5rem',
+            width: '400px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Edit Shift Timings</h2>
+              <button 
+                onClick={() => setShowShiftTimingsModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 1 Start (HH:MM):</label>
+                <input
+                  type="time"
+                  value={shiftTimings.shift1_start}
+                  onChange={(e) => setShiftTimings({...shiftTimings, shift1_start: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 1 End (HH:MM):</label>
+                <input
+                  type="time"
+                  value={shiftTimings.shift1_end}
+                  onChange={(e) => setShiftTimings({...shiftTimings, shift1_end: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 2 Start (HH:MM):</label>
+                <input
+                  type="time"
+                  value={shiftTimings.shift2_start}
+                  onChange={(e) => setShiftTimings({...shiftTimings, shift2_start: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 2 End (HH:MM):</label>
+                <input
+                  type="time"
+                  value={shiftTimings.shift2_end}
+                  onChange={(e) => setShiftTimings({...shiftTimings, shift2_end: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 3 Start (HH:MM):</label>
+                <input
+                  type="time"
+                  value={shiftTimings.shift3_start}
+                  onChange={(e) => setShiftTimings({...shiftTimings, shift3_start: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Shift 3 End (HH:MM):</label>
+                <input
+                  type="time"
+                  value={shiftTimings.shift3_end}
+                  onChange={(e) => setShiftTimings({...shiftTimings, shift3_end: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+              <button
+                onClick={handleUpdateShiftTimings}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={() => setShowShiftTimingsModal(false)}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-{showShiftTimingsWindow && (
-  <div style={modalOverlayStyle}>
-    <div style={modalContentStyle}>
-      <div style={modalHeaderStyle}>
-        <h3 style={{textAlign: 'center',paddingLeft: '130px'}}>Shift Timings</h3>
-        <button onClick={() => setShowShiftTimingsWindow(false)} style={closeBtnStyle}>×</button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' , alignItems: 'center', justifyContent: 'center', textAlign: 'center'}}>
-        <label>Shift 1 Start:</label>
-        <input type="time" value={shiftTimings.shift1Start} style={{ width: '300px', height: '40px' , borderRadius: '5px', border: '1px solid #ccc', padding: '5px', fontSize: '16px', boxSizing: 'border-box', marginBottom: '10px', marginTop: '5px', marginLeft: '5px',  textAlign: 'center', justifyContent: 'center' , display: 'flex', flexDirection: 'column', gap: '0.5rem',}} onChange={(e) => setShiftTimings({ ...shiftTimings, shift1Start: e.target.value })} />
-        <label>Shift 2 Start:</label>
-              <input type="time" value={shiftTimings.shift2Start} style={{ width: '300px', height: '40px' , borderRadius: '5px', border: '1px solid #ccc', padding: '5px', fontSize: '16px', boxSizing: 'border-box', marginBottom: '10px', marginTop: '5px', marginLeft: '5px',  textAlign: 'center', justifyContent: 'center' , display: 'flex', flexDirection: 'column', gap: '0.5rem',}} onChange={(e) => setShiftTimings({ ...shiftTimings, shift1Start: e.target.value })} />
-        <label>Shift 3 Start:</label>
-               <input type="time" value={shiftTimings.shift3Start} style={{ width: '300px', height: '40px' , borderRadius: '5px', border: '1px solid #ccc', padding: '5px', fontSize: '16px', boxSizing: 'border-box', marginBottom: '10px', marginTop: '5px', marginLeft: '5px',  textAlign: 'center', justifyContent: 'center' , display: 'flex', flexDirection: 'column', gap: '0.5rem',}} onChange={(e) => setShiftTimings({ ...shiftTimings, shift1Start: e.target.value })} />
-      </div>
-      <button onClick={saveShiftTimings}style={saveBtnStyle}/>
-    </div>
-  </div>
-)}
+      {/* Edit Station Modal */}
+      {showEditStationModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1002,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '0.5rem',
+            width: '500px',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Edit Station</h2>
+              <button 
+                onClick={() => setShowEditStationModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{marginBottom:'1rem'}}>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'bold'}}>
+                  Select Station:
+                </label>
+                <select
+                  value={selectedStationNameForEdit}
+                  onChange={e=>{
+                    const st = stations.find(s=>s.stationName===e.target.value);
+                    setSelectedStationNameForEdit(e.target.value);
+                    setSelectedStationForEdit(st);
+                    setEditStationData({
+                      stationName: st.stationName,
+                      plannedCount1: st.plannedCount1 || '',
+                      plannedCount2: st.plannedCount2 || '',
+                      plannedCount3: st.plannedCount3 || '',
+                      ipAddress:   st.ipAddress   || '',
+                      topic:       st.topic       || ''
+                    });
+                  }}
+                  style={{width:'100%',padding:'0.75rem',border:'1px solid #d1d5db',
+                          borderRadius:'0.25rem',fontSize:'1rem'}}
+                >
+                  <option value="">-- Select a Station --</option>
+                  {stations.map(s=>(
+                    <option key={s.stationName} value={s.stationName}>{s.stationName}</option>
+                  ))}
+                </select>
+              </div>
+              {selectedStationForEdit && (
+                <>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>First Shift Planned Count:</label>
+                    <input
+                      type="number"
+                      value={editStationData.plannedCount1}
+                      onChange={(e) => setEditStationData({...editStationData, plannedCount1: e.target.value})}
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Second Shift Planned Count:</label>
+                    <input
+                      type="number"
+                      value={editStationData.plannedCount2}
+                      onChange={(e) => setEditStationData({...editStationData, plannedCount2: e.target.value})}
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Third Shift Planned Count:</label>
+                    <input
+                      type="number"
+                      value={editStationData.plannedCount3}
+                      onChange={(e) => setEditStationData({...editStationData, plannedCount3: e.target.value})}
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>IP Address:</label>
+                    <input
+                      type="text"
+                      value={editStationData.ipAddress}
+                      onChange={(e) => setEditStationData({...editStationData, ipAddress: e.target.value})}
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Topic:</label>
+                    <input
+                      type="text"
+                      value={editStationData.topic}
+                      onChange={(e) => setEditStationData({...editStationData, topic: e.target.value})}
+                      style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '1rem' }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+              {selectedStationForEdit && (
+                <button
+                  onClick={handleEditStation}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    padding: '0.75rem',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Update Station
+                </button>
+              )}
+              <button
+                onClick={() => setShowEditStationModal(false)}
+                style={{
+                  flex: selectedStationForEdit ? 1 : 1,
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Delete Station Modal - IMPROVED with station selection */}
+      {showDeleteStationModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1002,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '0.5rem',
+            width: '400px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>Delete Station</h2>
+              <button 
+                onClick={() => setShowDeleteStationModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: '2rem' }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Select Station to Delete:</label>
+                <select
+                  value={selectedStationForDelete?.stationName || ''}
+                  onChange={(e) => {
+                    const station = stations.find(s => s.stationName === e.target.value);
+                    setSelectedStationForDelete(station);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.25rem',
+                    fontSize: '1rem',
+                    backgroundColor: 'white'
+                  }}
+                >
+                  <option value="">-- Select a Station --</option>
+                  {stations.map(station => (
+                    <option key={station.stationName} value={station.stationName}>
+                      {station.stationName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {selectedStationForDelete && (
+                <>
+                  <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+                    <p style={{ margin: 0, color: '#dc2626', fontWeight: 'bold' }}>⚠️ Warning: This action cannot be undone!</p>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '1rem' }}>
+                    Are you sure you want to delete station <strong>"{selectedStationForDelete.stationName}"</strong>?
+                  </p>
+                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                    This will permanently remove all associated data including fault records, shift data, and daily records.
+                  </p>
+                </>
+              )}
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={handleDeleteStation}
+                disabled={!selectedStationForDelete}
+                style={{
+                  flex: 1,
+                  backgroundColor: selectedStationForDelete ? '#ef4444' : '#d1d5db',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: selectedStationForDelete ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Delete Station
+              </button>
+              <button
+                onClick={() => setShowDeleteStationModal(false)}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '0.75rem',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Reports Modal */}
+      {showReportsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1002,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '0.5rem',
+            width: '500px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Reports</h2>
+              <button 
+                onClick={() => setShowReportsModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: '2rem' }}>
+              <p style={{ margin: '0 0 1rem 0', color: '#6b7280' }}>
+                Generate reports for different data views. Select a report type below:
+              </p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button
+                  onClick={() => { handleViewTable('baydetails'); setShowReportsModal(false); }}
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  📊 Bay Details Report
+                </button>
+                
+                <button
+                  onClick={() => { handleViewTable('SectionData'); setShowReportsModal(false); }}
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  🔧 Section Data Report
+                </button>
+                
+                <button
+                  onClick={() => { handleViewTable('DailyRecord'); setShowReportsModal(false); }}
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: '#f59e0b',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  📈 Daily Production Report
+                </button>
+                
+                <button
+                  onClick={() => { handleViewTable('ShiftData'); setShowReportsModal(false); }}
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: '#8b5cf6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  ⏰ Shift Data Report
+                </button>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setShowReportsModal(false)}
+              style={{
+                width: '100%',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                padding: '0.75rem',
+                border: 'none',
+                borderRadius: '0.25rem',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
+      {/* Table Modal */}
+      {showTableModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1002,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '1.5rem',
+            borderRadius: '0.5rem',
+            width: '90%',
+            maxWidth: '1200px',
+            height: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>View {selectedTable}</h2>
+              <button 
+                onClick={() => setShowTableModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#ef4444' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ flex: 1, overflow: 'auto', border: '1px solid #d1d5db', borderRadius: '0.25rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
+                  <tr>
+                    {tableColumns.map(column => (
+                      <th key={column} style={{ 
+                        padding: '0.75rem', 
+                        textAlign: 'left', 
+                        borderBottom: '1px solid #d1d5db',
+                        fontWeight: 'bold'
+                      }}>
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableData.map((row, index) => (
+                    <tr key={index} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      {tableColumns.map(column => (
+                        <td key={column} style={{ padding: '0.75rem', borderBottom: '1px solid #e5e7eb' }}>
+                          {row[column] || ''}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

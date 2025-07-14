@@ -1,5 +1,5 @@
 // scripts/setup-database.js
-const { connectDB, Baydetail, DailyRecord, SectionData } = require('../models');
+const { sequelize, connectDB, Baydetail, DailyRecord, SectionData } = require('../models');
 const path = require('path');
 const fs = require('fs');
 
@@ -53,6 +53,10 @@ async function createInitialStations() {
           actualCount: 0,
           efficiency: 0.0,
           ipAddress,
+          firstShiftPlannedCount: 40,
+          secondShiftPlannedCount: 35,
+          thirdShiftPlannedCount: 25,
+          topic: `station/${stationName.toLowerCase()}`,
           isActive: true,
           isAlive: true
         }

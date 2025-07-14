@@ -26,6 +26,10 @@ async function seedTestData() {
           actualCount: Math.floor(Math.random() * 120),
           efficiency: Math.random() * 100,
           ipAddress: `192.168.1.${i}`,
+          firstShiftPlannedCount: 40,
+          secondShiftPlannedCount: 35,
+          thirdShiftPlannedCount: 25,
+          topic: `station/station${i}`,
           isActive: Math.random() > 0.1, // 90% active
           isAlive: Math.random() > 0.05  // 95% alive
         }

@@ -48,6 +48,27 @@ const Baydetail = sequelize.define('Baydetail', {
       isIP: true
     }
   },
+  // New shift-related fields
+  firstShiftPlannedCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'first_shift_planned_count'
+  },
+  secondShiftPlannedCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'second_shift_planned_count'
+  },
+  thirdShiftPlannedCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'third_shift_planned_count'
+  },
+  topic: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'topic'
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
