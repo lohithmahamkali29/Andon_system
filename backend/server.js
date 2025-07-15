@@ -1,26 +1,13 @@
 require('dotenv').config();
-// backend/server.js - Updated for existing project structure
-// backend/server.js - FIXED VERSION with proper error handling
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
-const http = require('http');
-const socketIo = require('socket.io');
-const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
-const initMQTT = require('./utils/mqttClient');
+const { startPolling } = require('./services/devicePoller');
+
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
-
 const PORT = process.env.PORT || 5000;
 
 // Ensure database directory exists
@@ -42,11 +29,7 @@ app.use(express.static('public'));
 // Constants
 const CALLTYPES = ['PMD', 'Quality', 'Store', 'JMD', 'Production'];
 
-// Global variables
-let stationPollingActive = false;
-let stationData = [];
-
-// Database connection with error handling
+// Database connection
 let db;
 
 function initializeDatabase() {
@@ -55,12 +38,12 @@ function initializeDatabase() {
   db = new sqlite3.Database(DATABASE_NAME, (err) => {
     if (err) {
       console.error('❌ Database connection error:', err.message);
-      return;
+      process.exit(1);
     }
     console.log('✅ Connected to SQLite database');
   });
 
-  // Create tables with error handling
+  // Create tables
   const tables = [
     {
       name: 'baydetails',
@@ -152,69 +135,59 @@ function initializeDatabase() {
     }
   ];
 
-  // Create tables sequentially
-  let tableIndex = 0;
-  
-  function createNextTable() {
-    if (tableIndex >= tables.length) {
-      // All tables created, now insert default shift config
-      insertDefaultShiftConfig();
-      return;
-    }
-
-    const table = tables[tableIndex];
-    db.run(table.sql, (err) => {
-      if (err) {
-        console.error(`❌ Error creating table ${table.name}:`, err.message);
-      } else {
+  // Execute table creation sequentially
+  const createTables = async () => {
+    for (const table of tables) {
+      try {
+        await new Promise((resolve, reject) => {
+          db.run(table.sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
         console.log(`✅ Table ${table.name} ready`);
+      } catch (err) {
+        console.error(`❌ Error creating table ${table.name}:`, err.message);
       }
-      tableIndex++;
-      createNextTable();
+    }
+    
+    // Insert default shift config
+    db.get('SELECT COUNT(*) as count FROM ShiftConfig', (err, row) => {
+      if (err) {
+        console.error('❌ Error checking ShiftConfig:', err.message);
+        return;
+      }
+
+      if (!row || row.count === 0) {
+        db.run(`
+          INSERT INTO ShiftConfig (shift1_start, shift1_end, shift2_start, shift2_end, shift3_start, shift3_end)
+          VALUES ('05:30','14:20','14:20','00:10','00:10','05:30')
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error inserting default shift config:', err.message);
+          } else {
+            console.log('✅ Default shift config inserted');
+          }
+        });
+      }
     });
-  }
+  };
 
-  createNextTable();
+  createTables();
 }
 
-function insertDefaultShiftConfig() {
-  db.get('SELECT COUNT(*) as count FROM ShiftConfig', (err, row) => {
-    if (err) {
-      console.error('❌ Error checking ShiftConfig:', err.message);
-      return;
-    }
-
-    if (row.count === 0) {
-      db.run(`
-        INSERT INTO ShiftConfig (shift1_start, shift1_end, shift2_start, shift2_end, shift3_start, shift3_end)
-        VALUES ('05:30','14:20','14:20','00:10','00:10','05:30')
-      `, (err) => {
-        if (err) {
-          console.error('❌ Error inserting default shift config:', err.message);
-        } else {
-          console.log('✅ Default shift config inserted');
-        }
-      });
-    } else {
-      console.log('✅ Shift config already exists');
-    }
-  });
-}
-
-// API Routes with proper error handling
+// API Routes
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    database: db ? 'connected' : 'disconnected',
-    polling: stationPollingActive,
-    stations: stationData.length
+    database: db ? 'connected' : 'disconnected'
   });
 });
 
-// Get all stations
+// Get all stations with fault status
 app.get('/api/stations', (req, res) => {
   if (!db) {
     return res.status(500).json({ 
@@ -223,7 +196,8 @@ app.get('/api/stations', (req, res) => {
     });
   }
 
-  db.all('SELECT * FROM baydetails WHERE isactive=1', (err, rows) => {
+  // Get all active stations
+  db.all('SELECT * FROM baydetails WHERE isactive=1', (err, stations) => {
     if (err) {
       console.error('❌ Database error:', err.message);
       return res.status(500).json({ 
@@ -232,24 +206,62 @@ app.get('/api/stations', (req, res) => {
       });
     }
 
-    const stations = rows.map(row => ({
-      stationName: row.StationName,
-      planCount: row.PlannedCount1 || 0,
-      actualCount: row.ActualCount || 0,
-      totalDowntime: row.totalDowntime || 0,
-      ipAddress: row.ipAddress,
-      topic: row.Topic,
-      isActive: row.isactive,
-      isAlive: row.isalive,
-      faultStatus: {},
-      faultTime: '',
-      resolvedTime: '',
-      calltypeIndexMap: row.calltype_index_map
-    }));
+    // Get unresolved faults
+    db.all('SELECT * FROM SectionData WHERE ResolvedTime IS NULL', (faultErr, faults) => {
+      if (faultErr) {
+        console.error('❌ Fault query error:', faultErr.message);
+        return res.status(500).json({ 
+          success: false, 
+          error: faultErr.message 
+        });
+      }
 
-    res.json({ 
-      success: true,
-      stations
+      // Map faults to stations
+      const stationMap = {};
+      stations.forEach(station => {
+        stationMap[station.StationName] = {
+          stationName: station.StationName,
+          planCount: station.PlannedCount1 || 0,
+          actualCount: station.ActualCount || 0,
+          totalDowntime: station.totalDowntime || 0,
+          ipAddress: station.ipAddress,
+          topic: station.Topic,
+          isActive: station.isactive,
+          isAlive: station.isalive,
+          faultStatus: {},
+          faultTime: '',
+          resolvedTime: '',
+          calltypeIndexMap: station.calltype_index_map
+        };
+      });
+
+      // Set fault status
+      faults.forEach(fault => {
+        if (stationMap[fault.StationName]) {
+          stationMap[fault.StationName].faultStatus[fault.calltype] = true;
+          // Use the first fault time found
+          if (!stationMap[fault.StationName].faultTime) {
+            stationMap[fault.StationName].faultTime = fault.FaultTime;
+          }
+        }
+      });
+
+      // Convert to array
+      const stationData = Object.values(stationMap);
+      
+      // Set default fault status for all calltypes
+      stationData.forEach(station => {
+        CALLTYPES.forEach(calltype => {
+          if (station.faultStatus[calltype] === undefined) {
+            station.faultStatus[calltype] = false;
+          }
+        });
+      });
+
+      res.json({ 
+        success: true,
+        stations: stationData
+      });
     });
   });
 });
@@ -268,7 +280,7 @@ app.post('/api/stations', (req, res) => {
   if (!stationName || !plannedCount1 || !plannedCount2 || !plannedCount3 || !ipAddress) {
     return res.status(400).json({ 
       success: false, 
-      error: 'Missing required fields: stationName, plannedCount1, plannedCount2, plannedCount3, ipAddress' 
+      error: 'Missing required fields' 
     });
   }
 
@@ -283,7 +295,7 @@ app.post('/api/stations', (req, res) => {
   db.run(
     `INSERT INTO baydetails (StationName, PlannedCount1, PlannedCount2, PlannedCount3, ipAddress, Topic, isactive, isalive, calltype_index_map) 
      VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)`,
-    [stationName, parseInt(plannedCount1), parseInt(plannedCount2), parseInt(plannedCount3), ipAddress, topic || '', defaultCalltypeMap],
+    [stationName, plannedCount1, plannedCount2, plannedCount3, ipAddress, topic || '', defaultCalltypeMap],
     function(err) {
       if (err) {
         console.error('❌ Database error:', err.message);
@@ -300,17 +312,9 @@ app.post('/api/stations', (req, res) => {
       }
 
       // Create shift data entry
-      db.run('INSERT OR IGNORE INTO ShiftData (StationName) VALUES (?)', [stationName], (err) => {
-        if (err) {
-          console.warn('⚠️ Warning: Could not create shift data entry:', err.message);
-        }
-      });
+      db.run('INSERT OR IGNORE INTO ShiftData (StationName) VALUES (?)', [stationName]);
       
       console.log(`✅ Station '${stationName}' added successfully`);
-      // Subscribe to topic if provided
-      if (topic && mqtt) {
-        mqtt.subscribe(topic);
-      }
       res.json({ 
         success: true, 
         message: 'Station added successfully',
@@ -320,62 +324,54 @@ app.post('/api/stations', (req, res) => {
   );
 });
 
-// UPDATE an existing station
+// Update existing station
 app.put('/api/stations/:stationName', (req, res) => {
-  if (!db) return res.status(500).json({success:false,error:'DB not ready'});
+  if (!db) return res.status(500).json({success: false, error: 'Database not ready'});
+  
   const { stationName } = req.params;
   const decodedStationName = decodeURIComponent(stationName);
   const { plannedCount1, plannedCount2, plannedCount3, ipAddress, topic } = req.body;
 
   db.run(
     `UPDATE baydetails
-        SET PlannedCount1=?, PlannedCount2=?, PlannedCount3=?, ipAddress=?, Topic=?
-      WHERE StationName=?`,
+     SET PlannedCount1=?, PlannedCount2=?, PlannedCount3=?, ipAddress=?, Topic=?
+     WHERE StationName=?`,
     [plannedCount1, plannedCount2, plannedCount3, ipAddress, topic, decodedStationName],
     function (err) {
-      if (err) return res.status(500).json({success:false,error:err.message});
-      if (this.changes === 0)
-        return res.status(404).json({success:false,error:'Station not found'});
-      res.json({success:true,message:'Station updated'});
-      // push real-time update
-      io.emit('stationUpdate', { stationName, plannedCount1, plannedCount2,
-                                  plannedCount3, ipAddress, topic });
-    });
+      if (err) return res.status(500).json({success: false, error: err.message});
+      if (this.changes === 0) {
+        return res.status(404).json({success: false, error: 'Station not found'});
+      }
+      
+      res.json({success: true, message: 'Station updated'});
+    }
+  );
 });
 
-// DELETE a station (and dependents)  –  fixed
+// Delete a station
 app.delete('/api/stations/:stationName', (req, res) => {
-  if (!db) return res.status(500).json({ success: false, error: 'DB not ready' });
+  if (!db) return res.status(500).json({ success: false, error: 'Database not ready' });
 
   const { stationName } = req.params;
+  const decodedStationName = decodeURIComponent(stationName);
 
-  // Query the topic before deleting
-  db.get('SELECT Topic FROM baydetails WHERE StationName = ?', stationName, (err, row) => {
+  db.run('DELETE FROM baydetails WHERE StationName = ?', decodedStationName, function (err) {
     if (err) return res.status(500).json({ success: false, error: err.message });
-    const topic = row && row.Topic;
+    if (this.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Station not found' });
+    }
 
-    db.run('DELETE FROM baydetails WHERE StationName = ?', stationName, function (err) {
-      if (err)        return res.status(500).json({ success: false, error: err.message });
-      if (this.changes === 0)
-        return res.status(404).json({ success: false, error: 'Station not found' });
-
-      // secondary tables – we don’t care if they had 0 rows
-      const tables = ['ShiftData', 'ShiftBaselines', 'DailyRecord', 'SectionData'];
-      tables.forEach(t => db.run(`DELETE FROM ${t} WHERE StationName = ?`, stationName));
-
-      // Unsubscribe from topic if found
-      if (topic && mqtt) {
-        mqtt.unsubscribe(topic);
-      }
-
-      io.emit('stationUpdate', { stationName, deleted: true });
-      res.json({ success: true, message: 'Station deleted' });
+    // Delete related data
+    const tables = ['ShiftData', 'ShiftBaselines', 'DailyRecord', 'SectionData'];
+    tables.forEach(t => {
+      db.run(`DELETE FROM ${t} WHERE StationName = ?`, decodedStationName);
     });
+    
+    res.json({ success: true, message: 'Station deleted' });
   });
 });
 
-
-// Get shift configuration - FIXED
+// Get shift configuration
 app.get('/api/shift-config', (req, res) => {
   if (!db) {
     return res.status(500).json({ 
@@ -386,29 +382,25 @@ app.get('/api/shift-config', (req, res) => {
 
   db.get('SELECT * FROM ShiftConfig LIMIT 1', (err, row) => {
     if (err) {
-      console.error('❌ Shift config database error:', err.message);
+      console.error('❌ Shift config error:', err.message);
       return res.status(500).json({ 
         success: false, 
-        error: 'Database error: ' + err.message 
+        error: err.message 
       });
     }
     
     if (!row) {
-      // Return default config if no data exists
-      const defaultConfig = {
-        id: 1,
-        shift1_start: '05:30',
-        shift1_end: '14:20',
-        shift2_start: '14:20',
-        shift2_end: '00:10',
-        shift3_start: '00:10',
-        shift3_end: '05:30'
-      };
-      
-      console.log('⚠️ No shift config found, returning defaults');
+      // Return default config
       return res.json({ 
         success: true,
-        config: defaultConfig 
+        config: {
+          shift1_start: '05:30',
+          shift1_end: '14:20',
+          shift2_start: '14:20',
+          shift2_end: '00:10',
+          shift3_start: '00:10',
+          shift3_end: '05:30'
+        }
       });
     }
     
@@ -515,7 +507,7 @@ app.get('/api/tables/:tableName', (req, res) => {
 
     const columnNames = columns.map(col => col.name);
 
-    // Get table data
+    // Get table data (last 1000 records)
     db.all(`SELECT * FROM ${tableName} ORDER BY id DESC LIMIT 1000`, (err, rows) => {
       if (err) {
         console.error('❌ Database error:', err.message);
@@ -539,52 +531,25 @@ app.use((err, req, res, next) => {
   console.error('❌ Server error:', err.stack);
   res.status(500).json({ 
     success: false, 
-    error: 'Internal server error: ' + err.message 
-  });
-});
-
-// WebSocket connection handling
-io.on('connection', (socket) => {
-  console.log('👤 User connected:', socket.id);
-
-  socket.emit('connection_status', { 
-    message: 'Connected to Andon Dashboard', 
-    timestamp: new Date().toISOString() 
-  });
-
-  socket.on('disconnect', () => {
-    console.log('👤 User disconnected:', socket.id);
+    error: 'Internal server error' 
   });
 });
 
 // Initialize and start server
-async function startServer() {
+function startServer() {
   try {
-    // After database is initialized and ready (after initializeDatabase() is called):
-    let mqtt;
-    function handleStationUpdate(stationName, actualCount, faultStatus) {
-      db.run('UPDATE baydetails SET ActualCount=?, isalive=1 WHERE StationName=?',
-             [actualCount, stationName]);
-      io.emit('stationUpdate', { stationName, actualCount, faultStatus });
-    }
-
-    // Call this after DB is ready
     initializeDatabase();
-    mqtt = initMQTT(process.env.MQTT_URL || 'mqtt://localhost:1883', db, handleStationUpdate);
+    startPolling(); // Start device polling
     
-    // Wait for database to be ready
-    setTimeout(() => {
-      console.log('📊 Database initialization complete');
-    }, 2000);
-
-    server.listen(PORT, () => {
+    // Start HTTP server
+    app.listen(PORT, () => {
       console.log('🚀 Andon Dashboard Server running on port', PORT);
       console.log('📊 Dashboard: http://localhost:' + PORT);
-      console.log('🔌 WebSocket: ws://localhost:' + PORT);
       console.log('✅ Ready for frontend connections!');
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
+    process.exit(1);
   }
 }
 
@@ -593,20 +558,15 @@ startServer();
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down server...');
-  stationPollingActive = false;
   if (db) {
     db.close((err) => {
-      if (err) {
-        console.error('❌ Error closing database:', err.message);
-      } else {
-        console.log('✅ Database connection closed');
-      }
+      if (err) console.error('❌ Error closing database:', err.message);
+      else console.log('✅ Database connection closed');
+      process.exit(0);
     });
-  }
-  server.close(() => {
-    console.log('✅ Server shut down gracefully');
+  } else {
     process.exit(0);
-  });
+  }
 });
 
-module.exports = { app, db, io };
+module.exports = app;

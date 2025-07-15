@@ -18,7 +18,7 @@ const apiRoutes = require('../routes/api');
 const stationRoutes = require('../routes/stations');
 
 // Import MQTT handler
-const MQTTHandler = require('../services/mqttHandler');
+// const MQTTHandler = require('../services/mqttHandler');
 
 const app = express();
 const server = http.createServer(app);
@@ -163,7 +163,7 @@ app.use('*', (req, res) => {
 });
 
 // Initialize MQTT handler
-let mqttHandler;
+// let mqttHandler;
 
 // Start server
 async function startServer() {
@@ -172,8 +172,8 @@ async function startServer() {
     await connectDB();
     
     // Initialize MQTT handler
-    mqttHandler = new MQTTHandler(io);
-    await mqttHandler.connect();
+    // mqttHandler = new MQTTHandler(io);
+    // await mqttHandler.connect();
     
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
@@ -202,9 +202,9 @@ async function gracefulShutdown(signal) {
   
   try {
     // Close MQTT connection
-    if (mqttHandler) {
-      await mqttHandler.disconnect();
-    }
+    // if (mqttHandler) {
+    //   await mqttHandler.disconnect();
+    // }
     
     // Close server
     server.close(() => {

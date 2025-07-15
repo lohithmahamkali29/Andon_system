@@ -1,20 +1,6 @@
-version: '3.8'
-
+version: '3'
 services:
-  # MQTT Broker
-  mosquitto:
-    image: eclipse-mosquitto:2.0
-    container_name: andon-mosquitto
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    restart: unless-stopped
-    networks:
-      - andon-network
+
 
   # Backend API
   backend:
