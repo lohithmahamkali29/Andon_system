@@ -112,7 +112,7 @@ const Dashboard = () => {
     };
     
     updateShift();
-    const interval = setInterval(updateShift, 60000); // Update every minute
+    const interval = setInterval(updateShift,1000); // Update every minute
     
     return () => clearInterval(interval);
   }, [getCurrentShift]);
@@ -127,8 +127,8 @@ const Dashboard = () => {
             faults.push({
               stationName: station.stationName,
               calltype: calltype,
-              faultTime: station.faultTime || 'Unknown',
-              resolvedTime: station.resolvedTime || null
+              faultTime: station.faultTime ? formatTime(new Date(station.faultTime)) : 'Unknown',
+              resolvedTime: station.resolvedTime ? formatTime(new Date(station.resolvedTime)) : null
             });
           }
         });
@@ -490,7 +490,7 @@ const Dashboard = () => {
     const hasActiveFault = station.faultStatus && Object.values(station.faultStatus).some(status => status === true);
     
     if (hasActiveFault) {
-      const activeFaults = Object.entries(station.faultStatus || {})
+      const activeFaults = Object.entries(station.faultStatus )
         .filter(([_, status]) => status === true)
         .map(([calltype]) => calltype);
       return `⚠️ FAULT: ${activeFaults.join(', ')}`;

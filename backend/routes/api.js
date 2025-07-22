@@ -81,7 +81,7 @@ router.get('/reports/:reportType', (req, res) => {
   switch (reportType) {
     case 'baydetails':
       tableName = 'baydetails';
-      query = 'SELECT * FROM baydetails';
+      query = 'SELECT *FROM baydetails';
       break;
     case 'SectionData':
       tableName = 'SectionData';
@@ -186,7 +186,7 @@ router.post('/test-connection', async (req, res) => {
     const axios = require('axios');
     const url = ipAddress.startsWith('http') ? ipAddress : `http://${ipAddress}`;
     
-    const response = await axios.get(url, { timeout: 5000 });
+    const response = await axios.get(url, { timeout: 1500 });
     
     res.json({
       success: true,
