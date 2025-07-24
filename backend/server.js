@@ -4,10 +4,13 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { startPolling } = require('./services/devicePoller');
+const devicePoller = require('./services/devicePoller');
 
 
 const app = express();
+
+// Mount device poller routes
+app.use('/api', devicePoller.router);
 const PORT = process.env.PORT || 5000;
 
 // Ensure database directory exists
@@ -206,8 +209,9 @@ app.get('/api/stations', (req, res) => {
       });
     }
 
-    // Get unresolved faults
-    db.all('SELECT * FROM SectionData WHERE ResolvedTime IS NULL', (faultErr, faults) => {
+    // Get recent faults (last 24 hours)
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    db.all('SELECT * FROM SectionData WHERE DateTime > ? ORDER BY DateTime DESC', [yesterday], (faultErr, faults) => {
       if (faultErr) {
         console.error('❌ Fault query error:', faultErr.message);
         return res.status(500).json({ 
@@ -229,19 +233,41 @@ app.get('/api/stations', (req, res) => {
           isActive: station.isactive,
           isAlive: station.isalive,
           faultStatus: {},
-          faultTime: '',
-          resolvedTime: '',
-          calltypeIndexMap: station.calltype_index_map
+          faultTime: null,
+          resolvedTime: null,
+          calltypeIndexMap: JSON.parse(station.calltype_index_map || '{}')
         };
       });
 
       // Set fault status
       faults.forEach(fault => {
         if (stationMap[fault.StationName]) {
-          stationMap[fault.StationName].faultStatus[fault.calltype] = true;
-          // Use the first fault time found
-          if (!stationMap[fault.StationName].faultTime) {
-            stationMap[fault.StationName].faultTime = fault.FaultTime;
+          const station = stationMap[fault.StationName];
+          
+          // Initialize fault tracking for this calltype if not exists
+          if (!station.faultStatus[fault.calltype]) {
+            station.faultStatus[fault.calltype] = false;
+          }
+          
+          // Check if this is an active fault (no resolve time)
+          if (!fault.ResolvedTime) {
+            station.faultStatus[fault.calltype] = true;
+            
+            // Update fault time if this is more recent
+            const faultTime = new Date(fault.FaultTime);
+            if (!station.faultTime || faultTime > new Date(station.faultTime)) {
+              station.faultTime = fault.FaultTime;
+              station.resolvedTime = null;
+            }
+          } else {
+            // This is a resolved fault - only update if we don't have an active fault for this type
+            if (!station.faultStatus[fault.calltype]) {
+              const faultTime = new Date(fault.FaultTime);
+              if (!station.faultTime || faultTime > new Date(station.faultTime)) {
+                station.faultTime = fault.FaultTime;
+                station.resolvedTime = fault.ResolvedTime;
+              }
+            }
           }
         }
       });
@@ -476,6 +502,8 @@ app.put('/api/shift-config', (req, res) => {
   });
 });
 
+
+
 // Get table data
 app.get('/api/tables/:tableName', (req, res) => {
   if (!db) {
@@ -539,7 +567,7 @@ app.use((err, req, res, next) => {
 function startServer() {
   try {
     initializeDatabase();
-    startPolling(); // Start device polling
+    devicePoller.startPolling(); // Start device polling
     
     // Start HTTP server
     app.listen(PORT, () => {
