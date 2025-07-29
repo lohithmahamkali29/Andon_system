@@ -1,0 +1,1 @@
+// Removed MQTT simulation code as HTTP polling is now used.

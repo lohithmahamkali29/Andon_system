@@ -1,0 +1,55 @@
+version: '3'
+services:
+
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: andon-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MQTT_BROKER_URL=mqtt://mosquitto:1883
+      - DATABASE_PATH=/app/database/andon.db
+      - CORS_ORIGIN=http://localhost:3000
+    volumes:
+      - ./backend/database:/app/database
+      - ./backend/logs:/app/logs
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    networks:
+      - andon-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Dashboard
+  frontend:
+    build:
+      context: ./frontend/andon-dashboard
+      dockerfile: Dockerfile
+    container_name: andon-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - andon-network
+
+networks:
+  andon-network:
+    driver: bridge
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  backend-database:
+  backend-logs:

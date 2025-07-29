@@ -1,0 +1,89 @@
+# 📁 Andon System Architecture
+
+This document outlines the final, refactored structure of the Andon System, designed for clarity, maintainability, and scalability.
+
+## 🏗️ Refactored Project Structure
+
+```
+andon-system/
+├── 📄 docker-compose.yml
+├── 📄 .gitignore
+├── 📄 README.md
+│
+├── 📁 backend/
+│   ├── 📄 package.json
+│   ├── 📄 server.js              # Main Express server (thin and clean)
+│   ├── 📄 Dockerfile
+│   │
+│   ├── 📁 config/                # Centralized configuration
+│   │   └── 📄 database.js
+│   │
+│   ├── 📁 models/                # Sequelize models for database tables
+│   │   └── 📄 index.js
+│   │
+│   ├── 📁 routes/                # API routes, separated by concern
+│   │   ├── 📄 api.js
+│   │   ├── 📄 stations.js
+│   │   ├── 📄 faults.js
+│   │   ├── 📄 shift.js
+│   │   ├── 📄 reports.js
+│   │   └── 📄 dashboard.js
+│   │
+│   ├── 📁 services/              # Business logic
+│   │   └── 📄 devicePoller.js
+│   │
+│   ├── 📁 scripts/               # Utility and setup scripts
+│   │   ├── 📄 setup-database.js
+│   │   └── 📄 seed-data.js
+│   │
+│   └── 📁 database/              # SQLite database files
+│       └── 📄 andon_stations.db
+│
+└── 📁 frontend/
+    └── 📁 andon-dashboard/
+        ├── 📄 package.json
+        ├── 📄 Dockerfile
+        │
+        └── 📁 src/
+            ├── 📄 App.js
+            ├── 📄 Dashboard.js         # Main container component
+            │
+            ├── 📁 components/        # Reusable UI components
+            │   ├── 📄 Header.js
+            │   ├── 📄 NavigationBar.js
+            │   ├── 📄 StationHeader.js
+            │   ├── 📄 StationDisplay.js
+            │   └── 📄 ActiveFaultsSidebar.js
+            │
+            └── 📁 modals/            # Modal dialog components
+                ├── 📄 AddStationModal.js
+                ├── 📄 EditStationModal.js
+                ├── 📄 DeleteStationModal.js
+                ├── 📄 ShiftTimingsModal.js
+                ├── 📄 ReportsModal.js
+                └── 📄 TableModal.js
+```
+
+## ✅ Core Principles of the Refactored Architecture
+
+1.  **Separation of Concerns**
+    *   **Backend**: `server.js` is now only responsible for starting the server and mounting middleware and routes. All API logic is delegated to the `/routes` directory, and business logic is handled in `/services`.
+    *   **Frontend**: The main `Dashboard.js` component has been broken down into smaller, single-responsibility components, making the UI easier to manage.
+
+2.  **Consistent Data Access**
+    *   All database queries in the backend now exclusively use the **Sequelize ORM** and the models defined in `/models`. This eliminates raw SQL strings, reduces the risk of SQL injection, and ensures a single, consistent way to interact with the data.
+    *   The redundant `utils/database.js` file has been removed.
+
+3.  **Component-Based UI**
+    *   The frontend is structured around small, reusable React components. This makes the code easier to read, test, and maintain.
+    *   Styling is managed by **Tailwind CSS**, promoting a consistent design system and reducing the use of messy inline styles.
+
+4.  **Centralized Configuration**
+    *   Configuration for the database and other services is centralized in the `/config` directory, making it easy to manage different environments (development, production, etc.).
+
+## 🚀 Key Improvements
+
+*   **Maintainability**: With a clear and consistent structure, developers can easily locate code and understand its purpose.
+*   **Scalability**: The modular design of both the frontend and backend allows for new features to be added with minimal impact on existing code.
+*   **Readability**: Code is cleaner and more declarative, especially with the removal of raw SQL and inline styles.
+*   **Developer Experience**: A well-organized project is easier to work on, leading to faster development cycles and fewer bugs.
