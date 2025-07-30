@@ -159,7 +159,7 @@ async function insertFaultRecord(stationName, calltype, faultTime) {
     console.log(`📦 Parameters:`, params);
     
     await updateDb(
-      `INSERT INTO section_data (station_name, call_type, fault_time, date_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO section_data (station_name, call_type, fault_time, resolved_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
       params
     );
     console.log(`⚠️ Fault occurred for ${stationName} (${calltype}) at ${faultTimeStr}`);
